@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useRef } from 'react'
 import { GitPullRequestArrow, Loader2, Search, X } from 'lucide-react'
 import type { GitBranchCompareSummary } from '../../../../../../shared/git-diff-compare-types'
-import type { GitBranchLineTotal } from '../../../../../../shared/git-status-types'
+import type {
+  GitBranchLineTotal,
+  GitConflictOperation
+} from '../../../../../../shared/git-status-types'
 import type { SourceControlViewMode } from '../../../../../../shared/ui-chrome-types'
 import type { HostedReviewInfo } from '../../../../../../shared/hosted-review'
 import type { PrimaryAction } from '../../source-control-primary-action'
@@ -39,6 +42,7 @@ type SourceControlHeaderToolbarProps = {
   headDisplay?: WorktreeGitIdentityDisplay | null
   manualReviewUrl?: string | null
   branchLineTotal?: GitBranchLineTotal | null
+  conflictOperation?: GitConflictOperation
 }
 
 function HostedReviewToolbarLink({
@@ -144,7 +148,8 @@ export function SourceControlHeaderToolbar({
   compareBaseRef,
   headDisplay = null,
   manualReviewUrl,
-  branchLineTotal
+  branchLineTotal,
+  conflictOperation
 }: SourceControlHeaderToolbarProps): React.JSX.Element {
   const filterInputRef = useRef<HTMLInputElement>(null)
   const normalizedFilter = filterQuery.trim()
@@ -291,6 +296,7 @@ export function SourceControlHeaderToolbar({
             headDisplay={headDisplay}
             manualReviewUrl={manualReviewUrl}
             branchLineTotal={branchLineTotal}
+            conflictOperation={conflictOperation}
             onChangeBaseRef={onChangeBaseRef}
             onRetry={onRefreshBranchCompare}
           />
