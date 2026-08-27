@@ -58,11 +58,15 @@ const XTERM_PREFIXES = [
 const SHELL_PREFIXES = [
   'src/main/daemon/repro-13767-shell-ready-marker-lost-to-exec',
   'src/main/daemon/shell-ready',
+  'src/main/daemon/daemon-bash-shell-ready',
+  'src/main/daemon/daemon-shell-ready-wrapper',
   'src/main/daemon/node-pty-fd-leak',
   'src/main/providers/local-pty-shell-ready',
   'src/main/providers/__tests__/shell-ready-framework-example',
   'src/main/pty/',
-  'src/main/shell-startup-feature-channel',
+  'src/main/shell-templates',
+  'src/main/shell-startup-',
+  'src/main/shell-wrapper-',
   'src/main/terminal-history-fish',
   'src/main/zsh-',
   'src/renderer/src/components/terminal-pane/fish-color-scheme',
@@ -76,7 +80,7 @@ const SHELL_PREFIXES = [
 ]
 
 const ORCAD_BROWSER_PREFIXES = [
-  'src/main/orcad/external-chromium-browser-process',
+  'src/main/orcad/external-chromium-',
   'src/main/orcad/orcad-browser-provider',
   'src/main/orcad/orcad-agent-browser-binary',
   'src/main/orcad/electron-serve-browser-process'

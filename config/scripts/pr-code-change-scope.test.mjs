@@ -145,6 +145,38 @@ describe('per-job path classification', () => {
     })
   })
 
+  it('runs shell contracts when wrapper templates or live-shell fixtures change', () => {
+    expectClassification(['src/main/shell-templates.ts'], {
+      shell_contracts: true,
+      package: true,
+      package_windows: true
+    })
+    expectClassification(['src/main/shell-startup-launch-intent-fixtures.ts'], {
+      shell_contracts: true,
+      package: true,
+      package_windows: true
+    })
+  })
+
+  it('runs orcad browser when Chrome launch, session, or tab modules change', () => {
+    for (const file of [
+      'src/main/orcad/external-chromium-browser-session.ts',
+      'src/main/orcad/external-chromium-command-arguments.ts',
+      'src/main/orcad/external-chromium-tab-registry.ts',
+      'src/main/orcad/external-chromium-tab-projection.ts'
+    ]) {
+      expectClassification([file], {
+        orcad_browser: true,
+        package: true,
+        package_windows: true
+      })
+    }
+    expectClassification(['src/main/orcad/orcad-native-preflight.ts'], {
+      package: true,
+      package_windows: true
+    })
+  })
+
   it('runs workflow-self-change and lockfile diffs as force-all', () => {
     const result = classifyPrJobs(['.github/workflows/pr.yml'])
     expect(result.should_run).toBe(true)
