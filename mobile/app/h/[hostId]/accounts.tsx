@@ -1,13 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import {
-  View,
-  Text,
-  Pressable,
-  ScrollView,
-  ActivityIndicator,
-  RefreshControl,
-  Alert
-} from 'react-native'
+import { View, Text, Pressable, ScrollView, ActivityIndicator, RefreshControl, Alert } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router'
 import { ChevronLeft, Check, RefreshCw, User } from 'lucide-react-native'
@@ -34,6 +26,7 @@ import {
 } from '../../../src/components/codex-reset-credit'
 import { CodexResetCreditAction } from '../../../src/components/CodexResetCreditAction'
 import { useCodexResetCreditAction } from '../../../src/components/use-codex-reset-credit-action'
+import { HostUsageSections } from '../../../src/accounts/host-usage-sections'
 
 export default function AccountsScreen() {
   const router = useRouter()
@@ -219,7 +212,7 @@ export default function AccountsScreen() {
           >
             <View style={styles.rowMain}>
               <Text style={styles.rowTitle}>System default</Text>
-              <Text style={styles.rowSubtitle}>Use the agent's own login</Text>
+              <Text style={styles.rowSubtitle}>{'Use the agent\'s own login'}</Text>
               {/* Why: when system default is the active selection, activeUsage
                   holds the system-default login's rate limits — surface them
                   here so non-managed users still see their usage. */}
@@ -381,6 +374,16 @@ export default function AccountsScreen() {
           <>
             {renderProviderSection('claude', 'Claude')}
             {renderProviderSection('codex', 'Codex')}
+            <HostUsageSections
+              snapshot={snapshot}
+              now={now}
+              connected={connState === 'connected'}
+              busy={busyAccountId !== null}
+              resettingCodex={resettingCodex}
+              client={client}
+              hostId={hostId}
+              onSnapshot={acceptSnapshot}
+            />
             <View style={styles.footerHint}>
               <User size={14} color={colors.textMuted} />
               <Text style={styles.footerHintText}>

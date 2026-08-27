@@ -422,6 +422,14 @@ describe('OrcaRuntimeRpcServer', () => {
       }
     })
     await dispatch({
+      id: 'req_consume_grok_reset',
+      method: 'accounts.consumeGrokResetCredit',
+      deviceToken: mobile.token,
+      params: {
+        idempotencyKey: '22222222-2222-4222-8222-222222222222'
+      }
+    })
+    await dispatch({
       id: 'req_remove_claude',
       method: 'accounts.removeClaude',
       deviceToken: mobile.token,
@@ -627,6 +635,12 @@ describe('OrcaRuntimeRpcServer', () => {
     expect(mocks.consumeCodexRateLimitResetCredit).toHaveBeenCalledWith(
       '11111111-1111-4111-8111-111111111111',
       expectedCodexResetScope
+    )
+    expect(mocks.consumeGrokRateLimitResetCredit).toHaveBeenCalledWith(
+      '22222222-2222-4222-8222-222222222222'
+    )
+    expect(replies).toContainEqual(
+      expect.objectContaining({ id: 'req_consume_grok_reset', ok: true })
     )
     expect(mocks.readTerminal).toHaveBeenCalledWith('term-1', { cursor: undefined })
     expect(mocks.getRuntimeGitStatus).toHaveBeenCalledWith('id:wt-1')

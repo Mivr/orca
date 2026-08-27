@@ -40,6 +40,9 @@ let activeCodexAccountId: string | null = 'codex-personal'
 let codexUsageByAccount = new Map<string, MockCodexUsage>()
 let resetOperations = new Map<string, { scopeKey: string; outcome: 'reset' | 'noCredit' }>()
 let resetOfferOwners = new Map<string, string>()
+let grokWeeklyUsedPercent = 40
+let grokResetCredits = 1
+let grokResetOperations = new Map<string, 'reset' | 'noCredit' | 'nothingToReset'>()
 
 function createInitialCodexUsage(accountOffset: number): MockCodexUsage {
   return {
@@ -60,6 +63,9 @@ export function resetMockAccountState(now = Date.now()): void {
   ])
   resetOperations = new Map()
   resetOfferOwners = new Map()
+  grokWeeklyUsedPercent = 40
+  grokResetCredits = 1
+  grokResetOperations = new Map()
 }
 
 resetMockAccountState(fixtureStartedAt)
@@ -192,6 +198,30 @@ export function consumeMockCodexResetCredit(
   return { outcome, scope: currentScope }
 }
 
+export function consumeMockGrokResetCredit(idempotencyKey: unknown): {
+  outcome: 'reset' | 'noCredit' | 'nothingToReset'
+} {
+  if (typeof idempotencyKey !== 'string' || !UUID_PATTERN.test(idempotencyKey)) {
+    throw new Error('Invalid idempotencyKey')
+  }
+  const previous = grokResetOperations.get(idempotencyKey)
+  if (previous) {
+    return { outcome: previous }
+  }
+  if (grokWeeklyUsedPercent <= 0) {
+    grokResetOperations.set(idempotencyKey, 'nothingToReset')
+    return { outcome: 'nothingToReset' }
+  }
+  if (grokResetCredits <= 0) {
+    grokResetOperations.set(idempotencyKey, 'noCredit')
+    return { outcome: 'noCredit' }
+  }
+  grokResetCredits = 0
+  grokWeeklyUsedPercent = 0
+  grokResetOperations.set(idempotencyKey, 'reset')
+  return { outcome: 'reset' }
+}
+
 export function createMockAccountsSnapshot() {
   const codexLimits = codexLimitsFor(activeCodexAccountId)
   return {
@@ -227,6 +257,60 @@ export function createMockAccountsSnapshot() {
         status: 'ok' as const
       },
       codex: codexLimits,
+      grok: {
+        provider: 'grok' as const,
+        session: null,
+        weekly: {
+          usedPercent: grokWeeklyUsedPercent,
+          windowMinutes: 10_080,
+          resetsAt: fixtureStartedAt + 6 * 24 * 60 * 60 * 1000,
+          resetDescription: null
+        },
+        rateLimitResetCredits: {
+          availableCount: grokResetCredits,
+          nextExpiresAt: grokResetCredits > 0 ? fixtureStartedAt + 16 * 24 * 60 * 60 * 1000 : null
+        },
+        usageMetadata: { authProvenance: 'dev@example.com (SuperGrok Heavy)' },
+        updatedAt: fixtureStartedAt,
+        error: null,
+        status: 'ok' as const
+      },
+      cursor: {
+        provider: 'cursor' as const,
+        session: null,
+        weekly: null,
+        buckets: [
+          {
+            name: 'Cursor Models',
+            usedPercent: 100,
+            windowMinutes: 43_200,
+            resetsAt: fixtureStartedAt + 4 * 60 * 60 * 1000,
+            resetDescription: 'Aug 27'
+          },
+          {
+            name: 'Other Models',
+            usedPercent: 100,
+            windowMinutes: 43_200,
+            resetsAt: fixtureStartedAt + 4 * 60 * 60 * 1000,
+            resetDescription: 'Aug 27'
+          },
+          {
+            name: 'Grok Bot',
+            usedPercent: 0,
+            windowMinutes: 10_080,
+            resetsAt: fixtureStartedAt + 4 * 24 * 60 * 60 * 1000,
+            resetDescription: 'Aug 31'
+          }
+        ],
+        planType: 'ultra',
+        usageMetadata: {
+          accountEmail: 'dev@example.com',
+          subscriptionStatus: 'active'
+        },
+        updatedAt: fixtureStartedAt,
+        error: null,
+        status: 'ok' as const
+      },
       claudeTarget: { runtime: 'host' as const, wslDistro: null },
       codexTarget: { runtime: 'host' as const, wslDistro: null },
       inactiveClaudeAccounts: [],

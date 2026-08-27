@@ -26,13 +26,52 @@ vi.mock('node:fs', () => ({
 vi.mock('node:os', () => ({ homedir: () => '/home/test' }))
 
 import { fetchGrokRateLimits } from './grok-fetcher'
+import {
+  encodeGetRemainingResetsResponse,
+  encodeGrpcWebMessage,
+  GROK_REMAINING_RESETS_URL
+} from './grok-reset-credit-client'
 
 function jsonResponse(body: unknown, status = 200): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
-    json: async () => body
+    json: async () => body,
+    arrayBuffer: async () => new ArrayBuffer(0)
   } as Response
+}
+
+function grpcWebResponse(payload: Uint8Array, grpcStatus = '0'): Response {
+  const body = encodeGrpcWebMessage(payload, grpcStatus)
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers({ 'content-type': 'application/grpc-web+proto' }),
+    arrayBuffer: async () => body.slice().buffer,
+    json: async () => ({})
+  } as Response
+}
+
+function mockGrokNet(options?: {
+  credits?: unknown | Response
+  monthly?: unknown | Response
+  resets?: Response
+}): void {
+  netFetchMock.mockImplementation(async (url: string) => {
+    const href = String(url)
+    if (href.includes('GetRemainingResets') || href === GROK_REMAINING_RESETS_URL) {
+      return options?.resets ?? grpcWebResponse(new Uint8Array())
+    }
+    if (href.includes('format=credits')) {
+      const credits = options?.credits ?? BILLING_RESPONSE
+      return credits instanceof Response ? credits : jsonResponse(credits)
+    }
+    if (href.includes('/billing')) {
+      const monthly = options?.monthly ?? { config: {} }
+      return monthly instanceof Response ? monthly : jsonResponse(monthly)
+    }
+    return jsonResponse({}, 404)
+  })
 }
 
 const BILLING_RESPONSE = {
@@ -79,7 +118,7 @@ describe('fetchGrokRateLimits', () => {
 
   it('maps weekly credit usage from billing config', async () => {
     authState.file = freshAuthJson()
-    netFetchMock.mockResolvedValueOnce(jsonResponse(BILLING_RESPONSE))
+    mockGrokNet()
 
     const result = await fetchGrokRateLimits()
     expect(result.status).toBe('ok')
@@ -87,6 +126,7 @@ describe('fetchGrokRateLimits', () => {
     expect(result.weekly?.windowMinutes).toBe(10_080)
     expect(result.usageMetadata?.source).toBe('oauth')
     expect(result.usageMetadata?.authProvenance).toContain('SuperGrok')
+    expect(result.rateLimitResetCredits).toEqual({ availableCount: 0, nextExpiresAt: null })
 
     expect(netFetchMock).toHaveBeenCalledWith(
       'https://cli-chat-proxy.grok.com/v1/billing?format=credits',
@@ -98,12 +138,45 @@ describe('fetchGrokRateLimits', () => {
         })
       })
     )
+    expect(netFetchMock).toHaveBeenCalledWith(
+      GROK_REMAINING_RESETS_URL,
+      expect.objectContaining({ method: 'POST' })
+    )
+  })
+
+  it('attaches SuperGrok remaining reset tokens next to weekly usage', async () => {
+    authState.file = freshAuthJson()
+    mockGrokNet({
+      resets: grpcWebResponse(
+        encodeGetRemainingResetsResponse([
+          {
+            tokenId: 'restok_vpYDqo',
+            grantedAt: Date.parse('2026-08-12T18:49:00.000Z'),
+            expiresAt: Date.parse('2026-09-12T18:49:00.000Z')
+          }
+        ])
+      )
+    })
+
+    const result = await fetchGrokRateLimits()
+    expect(result.status).toBe('ok')
+    expect(result.rateLimitResetCredits).toEqual({
+      availableCount: 1,
+      nextExpiresAt: Date.parse('2026-09-12T18:49:00.000Z'),
+      credits: [
+        {
+          status: 'available',
+          grantedAt: Date.parse('2026-08-12T18:49:00.000Z'),
+          expiresAt: Date.parse('2026-09-12T18:49:00.000Z')
+        }
+      ]
+    })
   })
 
   it('maps an omitted protobuf percentage as zero for a weekly credits period', async () => {
     authState.file = freshAuthJson()
-    netFetchMock.mockResolvedValueOnce(
-      jsonResponse({
+    mockGrokNet({
+      credits: {
         config: {
           currentPeriod: {
             type: 'USAGE_PERIOD_TYPE_WEEKLY',
@@ -114,15 +187,17 @@ describe('fetchGrokRateLimits', () => {
           billingPeriodEnd: '2026-07-24T19:38:56.948570+00:00',
           isUnifiedBillingUser: true
         }
-      })
-    )
+      }
+    })
 
     const result = await fetchGrokRateLimits()
     expect(result.status).toBe('ok')
     expect(result.weekly?.usedPercent).toBe(0)
     expect(result.weekly?.resetsAt).toBe(Date.parse('2026-07-24T19:38:56.948570+00:00'))
     expect(result.monthly).toBeUndefined()
-    expect(netFetchMock).toHaveBeenCalledTimes(1)
+    expect(
+      netFetchMock.mock.calls.filter(([url]) => String(url).includes('/v1/billing')).length
+    ).toBe(1)
   })
 
   it('returns unavailable when not signed in even if a token-less auth file exists', async () => {
@@ -134,42 +209,41 @@ describe('fetchGrokRateLimits', () => {
 
   it('returns unavailable when neither billing view has usage', async () => {
     authState.file = freshAuthJson()
-    netFetchMock
-      .mockResolvedValueOnce(jsonResponse({ config: { subscriptionTier: 'Enterprise' } }))
-      .mockResolvedValueOnce(jsonResponse({ config: { subscriptionTier: 'Enterprise' } }))
+    mockGrokNet({
+      credits: { config: { subscriptionTier: 'Enterprise' } },
+      monthly: { config: { subscriptionTier: 'Enterprise' } }
+    })
 
     const result = await fetchGrokRateLimits()
     expect(result.status).toBe('unavailable')
     expect(result.weekly).toBeNull()
     expect(result.monthly).toBeUndefined()
+    expect(result.rateLimitResetCredits).toBeUndefined()
   })
 
   it('maps monthly included usage when a unified-billing response has an ambiguous weekly period', async () => {
     authState.file = freshAuthJson()
-    netFetchMock
-      .mockResolvedValueOnce(
-        jsonResponse({
-          config: {
-            currentPeriod: {
-              type: 'USAGE_PERIOD_TYPE_WEEKLY',
-              start: '2026-07-10T19:38:56.948570+00:00',
-              end: '2026-07-17T19:38:56.948570+00:00'
-            },
-            isUnifiedBillingUser: true,
-            subscriptionTier: 'SuperGrok'
-          }
-        })
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          config: {
-            monthlyLimit: { val: 150000 },
-            used: { val: 837 },
-            billingPeriodStart: '2026-07-01T00:00:00+00:00',
-            billingPeriodEnd: '2026-08-01T00:00:00+00:00'
-          }
-        })
-      )
+    mockGrokNet({
+      credits: {
+        config: {
+          currentPeriod: {
+            type: 'USAGE_PERIOD_TYPE_WEEKLY',
+            start: '2026-07-10T19:38:56.948570+00:00',
+            end: '2026-07-17T19:38:56.948570+00:00'
+          },
+          isUnifiedBillingUser: true,
+          subscriptionTier: 'SuperGrok'
+        }
+      },
+      monthly: {
+        config: {
+          monthlyLimit: { val: 150000 },
+          used: { val: 837 },
+          billingPeriodStart: '2026-07-01T00:00:00+00:00',
+          billingPeriodEnd: '2026-08-01T00:00:00+00:00'
+        }
+      }
+    })
 
     const result = await fetchGrokRateLimits()
     expect(result.status).toBe('ok')
@@ -180,14 +254,12 @@ describe('fetchGrokRateLimits', () => {
     expect(result.monthly?.resetsAt).toBe(Date.parse('2026-08-01T00:00:00+00:00'))
     expect(result.usageMetadata?.authProvenance).toContain('SuperGrok')
 
-    expect(netFetchMock).toHaveBeenNthCalledWith(
-      2,
+    expect(netFetchMock).toHaveBeenCalledWith(
       'https://cli-chat-proxy.grok.com/v1/billing',
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: 'Bearer access-token' })
       })
     )
-    expect(netFetchMock).toHaveBeenCalledTimes(2)
   })
 
   // Why: 'unavailable' would make applyStalePolicy discard the last good
@@ -217,19 +289,24 @@ describe('fetchGrokRateLimits', () => {
 
   it('does not request the default billing view when weekly credits are present', async () => {
     authState.file = freshAuthJson()
-    netFetchMock.mockResolvedValueOnce(jsonResponse(BILLING_RESPONSE))
+    mockGrokNet()
 
     const result = await fetchGrokRateLimits()
     expect(result.status).toBe('ok')
-    expect(netFetchMock).toHaveBeenCalledTimes(1)
+    expect(
+      netFetchMock.mock.calls.filter(([url]) => String(url).includes('/v1/billing')).length
+    ).toBe(1)
   })
 
   it('returns unavailable when billing response has no config', async () => {
     authState.file = freshAuthJson()
-    netFetchMock.mockResolvedValueOnce(jsonResponse({}))
+    mockGrokNet({ credits: {} })
 
     const result = await fetchGrokRateLimits()
     expect(result.status).toBe('unavailable')
+    expect(
+      netFetchMock.mock.calls.some(([url]) => String(url).includes('GetRemainingResets'))
+    ).toBe(false)
   })
 
   it('aborts the billing request when the caller aborts', async () => {

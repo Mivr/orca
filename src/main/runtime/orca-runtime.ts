@@ -1325,6 +1325,11 @@ export type CodexRateLimitResetRpcResult = {
     }
 )
 
+export type GrokRateLimitResetRpcResult = {
+  outcome: CodexRateLimitResetOutcome
+  snapshot: AccountsSnapshot
+}
+
 type RuntimeStore = {
   getRepos: Store['getRepos']
   getRepo: Store['getRepo']
@@ -3808,6 +3813,9 @@ export class OrcaRuntimeService {
   private ptyControllerAggregateInventoryGeneration = 0
   private ptyControllerInventoryGenerationByProvider = new Map<string, number>()
   private accountServices: RuntimeAccountServices | null = null
+  // Why: Grok has one host CLI login, so replay is keyed only on the phone's
+  // attempt id — a lost reply must not spend a second SuperGrok reset token.
+  private grokResetReplayByIdempotencyKey = new Map<string, GrokRateLimitResetRpcResult>()
   private commitMessageAgentEnv: CommitMessageAgentEnvironmentResolvers | null = null
   private automationService: AutomationService | null = null
   private artifactService: ArtifactCloudService | null = null
@@ -15494,6 +15502,27 @@ export class OrcaRuntimeService {
       scope: result.scope,
       snapshot
     }
+  }
+
+  async consumeGrokRateLimitResetCredit(
+    idempotencyKey: string
+  ): Promise<GrokRateLimitResetRpcResult> {
+    const replay = this.grokResetReplayByIdempotencyKey.get(idempotencyKey)
+    if (replay) {
+      return replay
+    }
+    const { claudeAccounts, codexAccounts, rateLimits } = this.requireAccountServices()
+    const { outcome } = await rateLimits.consumeGrokRateLimitResetCredit()
+    const result = {
+      outcome,
+      snapshot: {
+        claude: claudeAccounts.listAccounts(),
+        codex: codexAccounts.listAccounts(),
+        rateLimits: rateLimits.getState()
+      }
+    }
+    this.grokResetReplayByIdempotencyKey.set(idempotencyKey, result)
+    return result
   }
 
   removeClaudeAccount(accountId: string): Promise<ClaudeRateLimitAccountsState> {

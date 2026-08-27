@@ -1,6 +1,7 @@
 import type { RpcRequest, RpcResponse } from './mock-server-rpc-handlers'
 import {
   consumeMockCodexResetCredit,
+  consumeMockGrokResetCredit,
   createMockAccountsSnapshot,
   selectMockClaudeAccount,
   selectMockCodexAccount
@@ -40,6 +41,17 @@ export function handleMockAccountRequest(
         respond(success(request.id, createMockAccountsSnapshot().codex))
         notifyAccountSubscribers(success)
         return true
+      case 'accounts.consumeGrokResetCredit': {
+        const result = consumeMockGrokResetCredit(request.params?.idempotencyKey)
+        respond(
+          success(request.id, {
+            ...result,
+            snapshot: createMockAccountsSnapshot()
+          })
+        )
+        notifyAccountSubscribers(success)
+        return true
+      }
       case 'accounts.consumeCodexResetCredit': {
         const result = consumeMockCodexResetCredit(
           request.params?.idempotencyKey,

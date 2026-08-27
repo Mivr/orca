@@ -1,5 +1,6 @@
 import { net } from 'electron'
 import type {
+  CodexRateLimitResetOutcome,
   ProviderRateLimits,
   RateLimitWindow,
   UsageRateLimitMetadata
@@ -10,6 +11,10 @@ import {
   type GrokAuthReadResult,
   type GrokAuthSession
 } from './grok-auth'
+import {
+  consumeGrokRateLimitResetCreditFromRpc,
+  supplementGrokRateLimitResetCredits
+} from './grok-reset-credit-client'
 
 // Why: billing URL and headers must match Grok CLI or xAI rejects the request.
 const GROK_CLI_PROXY_BASE =
@@ -275,7 +280,11 @@ export async function fetchGrokRateLimits(
     }
     const weekly = mapWeeklyCredits(config)
     if (weekly) {
-      return billingUsageResult({ weekly }, config, session)
+      return supplementGrokRateLimitResetCredits(
+        billingUsageResult({ weekly }, config, session),
+        session,
+        { signal: options.signal }
+      )
     }
     // Why: some unified-billing accounts expose only a monthly included budget;
     // their credits view omits creditUsagePercent, so read the default view.
@@ -284,10 +293,30 @@ export async function fetchGrokRateLimits(
       return fallback.result
     }
     if (fallback.window) {
-      return billingUsageResult({ monthly: fallback.window }, config, session)
+      return supplementGrokRateLimitResetCredits(
+        billingUsageResult({ monthly: fallback.window }, config, session),
+        session,
+        { signal: options.signal }
+      )
     }
     return result('unavailable', 'Grok billing response did not include credit usage')
   } catch (err) {
     return result('error', err instanceof Error ? err.message : 'Grok usage request failed')
   }
+}
+
+export async function consumeGrokRateLimitResetCredit(): Promise<CodexRateLimitResetOutcome> {
+  const readResult = readGrokAuthSession()
+  if (readResult.status === 'missing') {
+    throw new Error('Grok not signed in')
+  }
+  if (readResult.status === 'error') {
+    throw new Error(readResult.error)
+  }
+  if (!isGrokAccessTokenFresh(readResult.session)) {
+    throw new Error(
+      'Grok sign-in expired — run grok on the computer running Orca; sign in if prompted. No chat message is needed.'
+    )
+  }
+  return consumeGrokRateLimitResetCreditFromRpc(readResult.session)
 }

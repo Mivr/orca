@@ -53,7 +53,8 @@ const PROVIDER_IDS: ProviderRateLimits['provider'][] = [
   'opencode-go',
   'kimi',
   'minimax',
-  'grok'
+  'grok',
+  'cursor'
 ]
 
 afterEach(() => {
@@ -326,6 +327,49 @@ describe('getWindowSections', () => {
     ])
   })
 
+  it('keeps Cursor named buckets without synthesizing a monthly window', () => {
+    const p: ProviderRateLimits = {
+      provider: 'cursor',
+      session: null,
+      weekly: null,
+      buckets: [
+        {
+          name: 'Cursor Models',
+          usedPercent: 100,
+          windowMinutes: 44640,
+          resetsAt: 1_787_860_909_000,
+          resetDescription: null
+        },
+        {
+          name: 'Other Models',
+          usedPercent: 41.5,
+          windowMinutes: 44640,
+          resetsAt: 1_787_860_909_000,
+          resetDescription: null
+        },
+        {
+          name: 'Grok Bot',
+          usedPercent: 12,
+          windowMinutes: 7102,
+          resetsAt: 1_788_191_082_913,
+          resetDescription: null
+        }
+      ],
+      updatedAt: Date.now(),
+      error: null,
+      status: 'ok'
+    }
+    const sections = getWindowSections(p)
+    expect(sections.map((section) => section.label)).toEqual([
+      'Cursor Models',
+      'Other Models',
+      'Grok Bot',
+      'Weekly'
+    ])
+    expect(p.monthly).toBeUndefined()
+    expect(sections.find((section) => section.label === 'Weekly')?.window).toBeNull()
+  })
+
   it('returns session and weekly when buckets are absent', () => {
     const p: ProviderRateLimits = {
       provider: 'claude',
@@ -444,6 +488,59 @@ describe('getWindowSections', () => {
     expect(sections[0].label).toBe('Pro')
     expect(sections[0].window!.resetsAt).toBe(18000000)
     expect(sections[0].window!.resetDescription).toBe('5:00 PM')
+  })
+})
+
+describe('ProviderPanel Cursor identity', () => {
+  it('shows Cursor email, plan, and Stripe status next to the buckets', () => {
+    const p = provider({
+      provider: 'cursor',
+      status: 'ok',
+      planType: 'ultra',
+      usageMetadata: {
+        accountEmail: 'dev@example.com',
+        subscriptionStatus: 'active'
+      },
+      buckets: [
+        {
+          name: 'Cursor Models',
+          usedPercent: 100,
+          windowMinutes: 43_200,
+          resetsAt: null,
+          resetDescription: 'Aug 27'
+        }
+      ]
+    })
+
+    const markup = renderToStaticMarkup(ProviderPanel({ p }))
+    expect(markup).toContain('dev@example.com')
+    expect(markup).toContain('ultra · active')
+    expect(markup).toContain('Cursor Models')
+  })
+})
+
+describe('ProviderPanel reset credits', () => {
+  it('shows Grok SuperGrok remaining reset tokens', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-27T12:00:00Z'))
+    const p = provider({
+      provider: 'grok',
+      status: 'ok',
+      weekly: {
+        usedPercent: 13,
+        windowMinutes: 10_080,
+        resetsAt: Date.parse('2026-09-03T12:58:43Z'),
+        resetDescription: 'Thu'
+      },
+      rateLimitResetCredits: {
+        availableCount: 1,
+        nextExpiresAt: Date.parse('2026-09-12T18:49:00Z')
+      }
+    })
+
+    const markup = renderToStaticMarkup(ProviderPanel({ p }))
+    expect(markup).toContain('1 rate-limit reset available')
+    expect(markup).toContain('Expires in')
   })
 })
 

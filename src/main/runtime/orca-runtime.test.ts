@@ -2238,6 +2238,47 @@ describe('OrcaRuntimeService', () => {
     expect(runtime.getStatus().capabilities).toContain('accounts.codex-reset-credit.v1')
   })
 
+  it('advertises Grok reset-credit RPC support as a static capability', () => {
+    const runtime = createRuntime()
+
+    expect(runtime.getStatus().capabilities).toContain('accounts.grok-reset-credit.v1')
+  })
+
+  it('routes mobile Grok reset consumption through RateLimitService and replays the same attempt key', async () => {
+    const runtime = createRuntime()
+    const snapshotState = { grok: { provider: 'grok', weekly: { usedPercent: 0 } } }
+    const consumeGrokRateLimitResetCredit = vi.fn().mockResolvedValue({
+      outcome: 'reset',
+      state: snapshotState
+    })
+    runtime.setAccountServices({
+      claudeAccounts: {
+        listAccounts: vi.fn(() => ({ accounts: [], activeAccountId: null }))
+      },
+      codexAccounts: {
+        listAccounts: vi.fn(() => ({ accounts: [], activeAccountId: null }))
+      },
+      rateLimits: {
+        consumeGrokRateLimitResetCredit,
+        getState: vi.fn(() => snapshotState)
+      }
+    } as never)
+
+    const first = await runtime.consumeGrokRateLimitResetCredit(
+      '22222222-2222-4222-8222-222222222222'
+    )
+    const second = await runtime.consumeGrokRateLimitResetCredit(
+      '22222222-2222-4222-8222-222222222222'
+    )
+
+    expect(first).toMatchObject({
+      outcome: 'reset',
+      snapshot: { rateLimits: snapshotState }
+    })
+    expect(second).toEqual(first)
+    expect(consumeGrokRateLimitResetCredit).toHaveBeenCalledOnce()
+  })
+
   it('routes mobile Codex reset consumption through the account mutation coordinator', async () => {
     const runtime = createRuntime()
     const expectedScope = {

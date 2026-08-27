@@ -45,11 +45,20 @@ vi.mock('./minimax-fetcher', () => ({
 }))
 
 vi.mock('./grok-fetcher', () => ({
-  fetchGrokRateLimits: vi.fn()
+  fetchGrokRateLimits: vi.fn(),
+  consumeGrokRateLimitResetCredit: vi.fn()
 }))
 
 vi.mock('./grok-auth', () => ({
   readGrokAuthSession: vi.fn(() => ({ status: 'missing' }))
+}))
+
+vi.mock('./cursor-fetcher', () => ({
+  fetchCursorRateLimits: vi.fn()
+}))
+
+vi.mock('./cursor-auth', () => ({
+  readCursorAuthSession: vi.fn(() => ({ status: 'missing' }))
 }))
 
 vi.mock('../minimax/minimax-cookie-store', () => ({

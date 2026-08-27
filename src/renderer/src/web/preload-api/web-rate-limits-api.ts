@@ -12,8 +12,10 @@ export function createRateLimitsApi(): NonNullable<Partial<PreloadApi>['rateLimi
     antigravity: null,
     minimax: null,
     grok: null,
+    cursor: null,
     minimaxCookieConfigured: false,
     grokAuthConfigured: false,
+    cursorAuthConfigured: false,
     claudeTarget: { runtime: 'host', wslDistro: null },
     codexTarget: { runtime: 'host', wslDistro: null },
     inactiveClaudeAccounts: [],
@@ -25,6 +27,7 @@ export function createRateLimitsApi(): NonNullable<Partial<PreloadApi>['rateLimi
     refreshCodexForTarget: () => Promise.resolve(empty),
     // Why: web clients don't own local Codex auth; report the safe no-credit outcome since redemption is desktop-only.
     consumeCodexResetCredit: () => Promise.resolve({ outcome: 'noCredit', state: empty }),
+    consumeGrokResetCredit: () => Promise.resolve({ outcome: 'noCredit', state: empty }),
     refreshClaudeForTarget: () => Promise.resolve(empty),
     setPollingInterval: () => Promise.resolve(),
     fetchInactiveClaudeAccounts: () => Promise.resolve(),

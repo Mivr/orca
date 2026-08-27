@@ -330,6 +330,7 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     skipDeleteAutomationConfirm: false,
     skipDeleteArtifactConfirm: false,
     skipCodexRateLimitResetConfirm: false,
+    skipGrokRateLimitResetConfirm: false,
     defaultTaskViewPreset: 'all',
     defaultTaskSource: 'github',
     visibleTaskProviders: [...TASK_PROVIDERS],
