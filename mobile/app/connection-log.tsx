@@ -146,7 +146,7 @@ export default function ConnectionLogScreen() {
             </View>
           )}
           {entries.length > 0 ? (
-            <ConnectionLog entries={[...entries]} title={selected.name} />
+            <ConnectionLog entries={[...entries]} title={selected.name} fillAvailableHeight />
           ) : (
             <Text style={styles.emptyText}>
               No connection events yet. Events appear as the app dials this host.

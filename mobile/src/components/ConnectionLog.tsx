@@ -8,6 +8,7 @@ type Props = {
   // Tag printed before the first entry so it's clear what's being logged
   // (e.g. 'Pairing' vs 'Reconnect').
   title?: string
+  fillAvailableHeight?: boolean
 }
 
 const LEVEL_COLOR: Record<ConnectionLogEntry['level'], string> = {
@@ -37,7 +38,7 @@ function formatTime(ts: number, baseTs: number): string {
   return `+${Math.round(elapsed)}s`
 }
 
-export function ConnectionLog({ entries, title }: Props) {
+export function ConnectionLog({ entries, title, fillAvailableHeight = false }: Props) {
   const scrollRef = useRef<ScrollView | null>(null)
 
   if (entries.length === 0) {
@@ -46,11 +47,16 @@ export function ConnectionLog({ entries, title }: Props) {
   const baseTs = entries[0]!.ts
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        fillAvailableHeight ? styles.fillContainer : styles.boundedContainer
+      ]}
+    >
       {title && <Text style={styles.title}>{title}</Text>}
       <ScrollView
         ref={scrollRef}
-        style={styles.scroll}
+        style={fillAvailableHeight ? styles.fillScroll : styles.boundedScroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
@@ -81,13 +87,18 @@ export function ConnectionLog({ entries, title }: Props) {
 const styles = StyleSheet.create({
   container: {
     width: '100%',
-    maxHeight: 240,
     backgroundColor: colors.bgPanel,
     borderRadius: radii.card,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.borderSubtle,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md
+  },
+  boundedContainer: {
+    maxHeight: 240
+  },
+  fillContainer: {
+    flex: 1
   },
   title: {
     fontSize: typography.metaSize,
@@ -97,8 +108,11 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: spacing.xs
   },
-  scroll: {
+  boundedScroll: {
     maxHeight: 200
+  },
+  fillScroll: {
+    flex: 1
   },
   scrollContent: {
     gap: 6
