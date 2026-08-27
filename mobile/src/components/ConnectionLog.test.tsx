@@ -1,5 +1,5 @@
 import { createElement } from 'react'
-import { act, create, type ReactTestRenderer } from 'react-test-renderer'
+import { act, create } from 'react-test-renderer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ConnectionLogEntry } from '../transport/types'
 import { ConnectionLog } from './ConnectionLog'
@@ -16,18 +16,29 @@ const entries: ConnectionLogEntry[] = [
 ]
 
 describe('ConnectionLog', () => {
-  let renderer: ReactTestRenderer | null = null
+  type RenderedNode = { props: { style?: unknown } }
+  type Renderer = {
+    root: {
+      findAllByType: (type: unknown) => RenderedNode[]
+      findByType: (type: unknown) => RenderedNode
+    }
+    unmount: () => void
+  }
+
+  let renderer: Renderer | null = null
 
   afterEach(() => {
     act(() => renderer?.unmount())
     renderer = null
   })
 
-  function renderLog(fillAvailableHeight = false): ReactTestRenderer {
+  function renderLog(fillAvailableHeight = false): Renderer {
     act(() => {
-      renderer = create(createElement(ConnectionLog, { entries, fillAvailableHeight }))
+      renderer = create(
+        createElement(ConnectionLog, { entries, fillAvailableHeight })
+      ) as unknown as Renderer
     })
-    return renderer as unknown as ReactTestRenderer
+    return renderer as Renderer
   }
 
   it('keeps the compact height in pairing flows', () => {
