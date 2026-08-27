@@ -6,6 +6,7 @@ import { updateViewportForClient } from './terminal-viewport-update'
 import { watchSubscriptionLifetime } from './terminal-input-delivery'
 import type { TerminalSubscriptionArgs } from './terminal-legacy-subscription-types'
 import { allocateTerminalSubscriptionStreamId } from './terminal-subscription-stream-id'
+import { registerTerminalStreamViewSubscriber } from './terminal-stream-view-subscriber'
 
 export async function runTerminalLeaseSubscription(args: TerminalSubscriptionArgs): Promise<void> {
   const { params, runtime, connectionId, signal, emit, ptyId, clientId } = args
@@ -69,6 +70,7 @@ export async function runTerminalJsonSubscription(args: TerminalSubscriptionArgs
     emit,
     ptyId,
     clientId,
+    isMobile,
     supportsDesktopViewportClaims
   } = args
   // Why: only unregister the width floor this subscription took (see the multiplex stream's registeredRemoteDesktopDriver note).
@@ -156,8 +158,13 @@ export async function runTerminalJsonSubscription(args: TerminalSubscriptionArgs
     const unsubscribeStreamData = runtime.subscribeToTerminalData(ptyId, (data) => {
       outputBatcher?.push(data)
     })
-    // Why: the legacy JSON stream can feed a live xterm view, so register as a view subscriber; worst case is a withheld model reply, safer than a double reply.
-    const releaseViewSubscriber = runtime.registerRemoteTerminalViewSubscriber(ptyId)
+    const releaseViewSubscriber = registerTerminalStreamViewSubscriber({
+      runtime,
+      ptyId,
+      clientId,
+      isMobile,
+      queryReplyInput: params.capabilities?.queryReplyInput
+    })
     unsubscribeData = () => {
       releaseViewSubscriber()
       unsubscribeStreamData()

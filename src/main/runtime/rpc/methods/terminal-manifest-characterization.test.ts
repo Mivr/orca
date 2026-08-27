@@ -121,9 +121,16 @@ describe('terminal RPC manifest characterization', () => {
       TerminalMultiplexSubscribeFrame.parse({
         streamId: 1,
         terminal: 'term',
+        capabilities: { queryReplyInput: 0 },
         futureCapability: 1
       })
-    ).toEqual({ streamId: 1, terminal: 'term' })
+    ).toEqual({ streamId: 1, terminal: 'term', capabilities: { queryReplyInput: 0 } })
+    expect(
+      schemaFor('terminal.subscribe').parse({
+        terminal: 'term',
+        capabilities: { queryReplyInput: 1 }
+      })
+    ).toEqual({ terminal: 'term', capabilities: { queryReplyInput: 1 } })
   })
 
   it('returns execution-host authority from lifecycle handlers without reinterpretation', async () => {

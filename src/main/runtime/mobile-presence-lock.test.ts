@@ -333,10 +333,13 @@ describe('mobile presence lock — multi-mobile semantics', () => {
     const { runtime } = createRuntime()
     await runtime.handleMobileSubscribe('pty-1', 'phone-A', { cols: 45, rows: 20 })
     await runtime.handleMobileSubscribe('pty-1', 'phone-B', { cols: 38, rows: 18 })
+    const releaseA = runtime.registerRemoteTerminalViewSubscriber('pty-1', 'phone-A')
+    runtime.registerRemoteTerminalViewSubscriber('pty-1', 'phone-B')
 
     expect(runtime.isMobileTerminalQueryReplyAuthority('pty-1', 'phone-A')).toBe(true)
     expect(runtime.isMobileTerminalQueryReplyAuthority('pty-1', 'phone-B')).toBe(false)
 
+    releaseA()
     runtime.handleMobileUnsubscribe('pty-1', 'phone-A')
     expect(runtime.isMobileTerminalQueryReplyAuthority('pty-1', 'phone-B')).toBe(true)
 
@@ -352,6 +355,8 @@ describe('mobile presence lock — multi-mobile semantics', () => {
     await vi.advanceTimersByTimeAsync(10)
     await runtime.handleMobileSubscribe('pty-1', 'phone-B', { cols: 38, rows: 18 })
     await runtime.handleMobileSubscribe('pty-1', 'phone-A', { cols: 45, rows: 20 })
+    runtime.registerRemoteTerminalViewSubscriber('pty-1', 'phone-A')
+    runtime.registerRemoteTerminalViewSubscriber('pty-1', 'phone-B')
 
     expect(runtime.isMobileTerminalQueryReplyAuthority('pty-1', 'phone-A')).toBe(true)
     expect(runtime.isMobileTerminalQueryReplyAuthority('pty-1', 'phone-B')).toBe(false)
@@ -368,9 +373,23 @@ describe('mobile presence lock — multi-mobile semantics', () => {
     runtime.markMobileActor('pty-1', 'phone-B')
     runtime.setMobileDisplayMode('pty-1', 'auto')
     await runtime.applyMobileDisplayMode('pty-1')
+    runtime.registerRemoteTerminalViewSubscriber('pty-1', 'phone-A')
+    runtime.registerRemoteTerminalViewSubscriber('pty-1', 'phone-B')
 
     expect(runtime.isMobileTerminalQueryReplyAuthority('pty-1', 'phone-A')).toBe(false)
     expect(runtime.isMobileTerminalQueryReplyAuthority('pty-1', 'phone-B')).toBe(true)
+  })
+
+  it('elects a ready subscriber when an older mobile view has not claimed replies', async () => {
+    const { runtime } = createRuntime()
+    await runtime.handleMobileSubscribe('pty-1', 'phone-unready', { cols: 45, rows: 20 })
+    await vi.advanceTimersByTimeAsync(10)
+    await runtime.handleMobileSubscribe('pty-1', 'phone-ready', { cols: 38, rows: 18 })
+    runtime.registerRawTerminalViewSubscriber('pty-1')
+    runtime.registerRemoteTerminalViewSubscriber('pty-1', 'phone-ready')
+
+    expect(runtime.isMobileTerminalQueryReplyAuthority('pty-1', 'phone-unready')).toBe(false)
+    expect(runtime.isMobileTerminalQueryReplyAuthority('pty-1', 'phone-ready')).toBe(true)
   })
 
   it('most-recent actor wins active phone-fit dims (B subscribes after A)', async () => {

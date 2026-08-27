@@ -921,6 +921,8 @@ export default function SessionScreen() {
     readonly liveInputEnabled: boolean
   } | null>(null)
   const terminalUnsubsRef = useRef<Map<string, () => void>>(new Map())
+  const terminalQueryReplyAuthorityRef = useRef<Set<string>>(new Set())
+  const hostQueryReplyInputSupportedRef = useRef(false)
   const subscribingHandlesRef = useRef<Set<string>>(new Set())
   // Why: a lease-only subscribe never renders, so the reconciler needs to tell it apart
   // from a stream that does — an uncovered handle holding one is a blank terminal.
@@ -1245,6 +1247,7 @@ export default function SessionScreen() {
     (handle: string) => {
       terminalUnsubsRef.current.get(handle)?.()
       terminalUnsubsRef.current.delete(handle)
+      terminalQueryReplyAuthorityRef.current.delete(handle)
       subscribingHandlesRef.current.delete(handle)
       leaseOnlyHandlesRef.current.delete(handle)
       terminalDiagnosticsRef.current.terminalUnsubscribed(handle)
@@ -1278,6 +1281,7 @@ export default function SessionScreen() {
     terminalUnsubsRef.current.forEach((unsub) => unsub())
     clearNativeChatInputLease()
     terminalUnsubsRef.current.clear()
+    terminalQueryReplyAuthorityRef.current.clear()
     subscribingHandlesRef.current.clear()
     leaseOnlyHandlesRef.current.clear()
     initializedHandlesRef.current.clear()
@@ -1356,6 +1360,16 @@ export default function SessionScreen() {
       diagnostics.streamArmed(handle, seq, viewportRef.current)
 
       // Why: viewport is embedded in the subscribe params so the server auto-fits before serializing scrollback (no focus→safeFit race).
+      const capabilities = nativeChatTerminalStream.mobileNativeChatTerminalCapabilities(
+        covered,
+        hostQueryReplyInputSupportedRef.current,
+        viewportRef.current !== null
+      )
+      if (capabilities.queryReplyInput === 1) {
+        terminalQueryReplyAuthorityRef.current.add(handle)
+      } else {
+        terminalQueryReplyAuthorityRef.current.delete(handle)
+      }
       const unsub = subscribeMobileTerminalSafely(
         client,
         {
@@ -1365,7 +1379,7 @@ export default function SessionScreen() {
             covered,
             viewportRef.current
           ),
-          capabilities: nativeChatTerminalStream.mobileNativeChatTerminalCapabilities(covered)
+          capabilities
         },
         (result) => {
           if (subscribeSeqRef.current.get(handle) !== seq) {
@@ -2357,8 +2371,6 @@ export default function SessionScreen() {
     terminalGestureInputQueuesRef.current.clear()
     terminalGestureInputInFlightRef.current.clear()
   }, [connState])
-
-  const hostQueryReplyInputSupportedRef = useRef(false)
 
   useEffect(() => {
     if (!client || connState !== 'connected') {
@@ -3380,7 +3392,7 @@ export default function SessionScreen() {
       connected: connStateRef.current === 'connected',
       handle,
       hostSupportsQueryReplyInput: hostQueryReplyInputSupportedRef.current,
-      subscribedTerminals: terminalUnsubsRef.current
+      queryReplyAuthorityTerminals: terminalQueryReplyAuthorityRef.current
     })
   }, [])
 

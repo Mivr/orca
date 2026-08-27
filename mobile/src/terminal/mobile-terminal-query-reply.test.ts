@@ -25,7 +25,7 @@ describe('sendMobileTerminalQueryReply', () => {
         connected: true,
         handle: 'terminal-1',
         hostSupportsQueryReplyInput: true,
-        subscribedTerminals: new Set(['terminal-1'])
+        queryReplyAuthorityTerminals: new Set(['terminal-1'])
       })
     ).resolves.toBe(true)
 
@@ -43,7 +43,7 @@ describe('sendMobileTerminalQueryReply', () => {
     ['unsubscribed', true, new Set(), '\x1b[3;4R', 'terminal-1'],
     ['stale handle', true, new Set(['terminal-2']), '\x1b[3;4R', 'terminal-1'],
     ['ordinary input', true, new Set(['terminal-1']), 'a', 'terminal-1']
-  ])('does not send %s data', async (_case, connected, subscribedTerminals, bytes, handle) => {
+  ])('does not send %s data', async (_case, connected, authorityTerminals, bytes, handle) => {
     const client = createClient()
 
     await expect(
@@ -54,7 +54,7 @@ describe('sendMobileTerminalQueryReply', () => {
         connected,
         handle,
         hostSupportsQueryReplyInput: true,
-        subscribedTerminals
+        queryReplyAuthorityTerminals: authorityTerminals
       })
     ).resolves.toBe(false)
     expect(client.sendRequest).not.toHaveBeenCalled()
@@ -73,7 +73,7 @@ describe('sendMobileTerminalQueryReply', () => {
         connected: true,
         handle: 'terminal-1',
         hostSupportsQueryReplyInput: false,
-        subscribedTerminals: new Set(['terminal-1'])
+        queryReplyAuthorityTerminals: new Set(['terminal-1'])
       })
     ).resolves.toBe(false)
     expect(client.sendRequest).not.toHaveBeenCalled()

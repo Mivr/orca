@@ -19,6 +19,7 @@ function stubRuntime(overrides: Partial<OrcaRuntimeService> = {}): OrcaRuntimeSe
     // Why: subscribe streams register as remote view subscribers for Phase-5
     // query-authority suppression (terminal-query-authority.md).
     registerRemoteTerminalViewSubscriber: () => () => {},
+    registerRawTerminalViewSubscriber: () => () => {},
     requestRendererTerminalTabMount: () => false,
     ...overrides
   } as OrcaRuntimeService
@@ -82,14 +83,14 @@ describe('terminal subscribe buffering', () => {
     }
   })
 
-  it('captures live queries before awaiting mobile fit and delivers them after the snapshot', async () => {
+  it('keeps main authoritative for a legacy mobile subscriber before awaiting mobile fit', async () => {
     const binaryFrames: Uint8Array<ArrayBufferLike>[] = []
     const registry = createSubscriptionRegistryDouble()
     let dataListener:
       | ((data: string, meta?: { seq?: number; rawLength?: number }) => void)
       | undefined
     let resolveMobileSubscribe: () => void = () => {}
-    const registerRemoteTerminalViewSubscriber = vi.fn(() => vi.fn())
+    const registerRawTerminalViewSubscriber = vi.fn(() => vi.fn())
     const runtime = stubRuntime({
       resolveLeafForHandle: vi.fn().mockReturnValue({ ptyId: 'pty-1' }),
       handleMobileSubscribe: vi.fn(
@@ -103,7 +104,7 @@ describe('terminal subscribe buffering', () => {
         dataListener = listener
         return vi.fn()
       }),
-      registerRemoteTerminalViewSubscriber,
+      registerRawTerminalViewSubscriber,
       readTerminal: vi.fn().mockResolvedValue({ tail: [], truncated: false }),
       serializeTerminalBuffer: vi
         .fn()
@@ -139,7 +140,7 @@ describe('terminal subscribe buffering', () => {
 
     await vi.waitFor(() => expect(runtime.handleMobileSubscribe).toHaveBeenCalled())
     expect(dataListener).toBeDefined()
-    expect(registerRemoteTerminalViewSubscriber).toHaveBeenCalledWith('pty-1')
+    expect(registerRawTerminalViewSubscriber).toHaveBeenCalledWith('pty-1')
     dataListener?.('\x1b[6n', { seq: 4, rawLength: 4 })
     resolveMobileSubscribe()
 

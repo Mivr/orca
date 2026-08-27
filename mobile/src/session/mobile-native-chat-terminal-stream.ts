@@ -43,13 +43,21 @@ export function isTerminalCoveredByNativeChat(
   return showNativeChat && activeHandle === handle
 }
 
-export function mobileNativeChatTerminalCapabilities(covered: boolean): {
+export function mobileNativeChatTerminalCapabilities(
+  covered: boolean,
+  hostSupportsQueryReplyInput: boolean,
+  hasViewport: boolean
+): {
   terminalBinaryStream: 1
   mobileInputLeaseOnly?: 1
+  queryReplyInput: 0 | 1
 } {
   return covered
-    ? { terminalBinaryStream: 1, mobileInputLeaseOnly: 1 }
-    : { terminalBinaryStream: 1 }
+    ? { terminalBinaryStream: 1, mobileInputLeaseOnly: 1, queryReplyInput: 0 }
+    : {
+        terminalBinaryStream: 1,
+        queryReplyInput: hostSupportsQueryReplyInput && hasViewport ? 1 : 0
+      }
 }
 
 // Why: a covered subscribe is only an input lease — carrying phone dims would make the host phone-fit a PTY native chat never renders.

@@ -13,6 +13,7 @@ import type {
   TerminalMultiplexConnection
 } from './terminal-multiplex-connection'
 import type { TerminalMultiplexStream } from './terminal-stream-types'
+import { registerTerminalStreamViewSubscriber } from './terminal-stream-view-subscriber'
 
 export async function initializeMultiplexStream(
   state: TerminalMultiplexConnection,
@@ -111,8 +112,13 @@ export async function initializeMultiplexStream(
     }
     stream.outputBatcher.push(data, meta)
   })
-  // Why: a multiplexed stream feeds a remote xterm view with query authority, so the main model responder yields while attached (terminal-query-authority.md).
-  const releaseViewSubscriber = runtime.registerRemoteTerminalViewSubscriber(ptyId)
+  const releaseViewSubscriber = registerTerminalStreamViewSubscriber({
+    runtime,
+    ptyId,
+    clientId: request.client?.id,
+    isMobile,
+    queryReplyInput: request.capabilities?.queryReplyInput
+  })
   stream.unsubscribeData = () => {
     releaseViewSubscriber()
     unsubscribeStreamData()

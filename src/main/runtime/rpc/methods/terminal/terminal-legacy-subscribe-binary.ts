@@ -24,6 +24,7 @@ import type { TerminalOutputChunk } from './terminal-stream-types'
 import { publishLegacyBinaryInitialSnapshot } from './terminal-legacy-subscribe-snapshot'
 import { activateLegacyBinarySubscription } from './terminal-legacy-subscribe-live'
 import { registerLegacyBinaryControlFrames } from './terminal-legacy-binary-control-frames'
+import { registerTerminalStreamViewSubscriber } from './terminal-stream-view-subscriber'
 const TERMINAL_QUERY_REPLAY_MAX_CHARS = 16 * 1024
 export async function runTerminalBinarySubscription(args: TerminalSubscriptionArgs): Promise<void> {
   const { params, runtime, connectionId, sendBinary, signal, emit, ptyId, clientId, isMobile } =
@@ -173,7 +174,13 @@ export async function runTerminalBinarySubscription(args: TerminalSubscriptionAr
     outputBatcher?.push(data, meta)
   })
   // Why: capture live bytes before mobile-fit awaits; registering presence first would suppress main while no view held the query.
-  const releaseViewSubscriber = runtime.registerRemoteTerminalViewSubscriber(ptyId)
+  const releaseViewSubscriber = registerTerminalStreamViewSubscriber({
+    runtime,
+    ptyId,
+    clientId,
+    isMobile,
+    queryReplyInput: params.capabilities?.queryReplyInput
+  })
   unsubscribeData = () => {
     releaseViewSubscriber()
     unsubscribeStreamData()

@@ -3564,9 +3564,10 @@ export class OrcaRuntimeService {
   // stream feeds a remote xterm view (mobile/web/remote desktop) that answers
   // queries with view authority, so main must yield while one is attached
   // (terminal-query-authority.md). Ref-counted per PTY because multiple
-  // streams can attach concurrently; mobileSubscribers is consulted too so
-  // grace-window mobile records keep suppressing.
+  // streams can attach concurrently. Mobile claims are tracked separately so
+  // an unfitted view cannot suppress main before it can send accepted replies.
   private remoteTerminalViewSubscriberCounts = new Map<string, number>()
+  private mobileTerminalQueryReplySubscriberCounts = new Map<string, Map<string, number>>()
   // Preview windows consume the raw stream but deliberately leave terminal
   // query replies to main's headless emulator.
   private rawTerminalViewSubscriberCounts = new Map<string, number>()
@@ -13068,11 +13069,17 @@ export class OrcaRuntimeService {
    *  view subscriber is attached its xterm answers queries with view
    *  authority and the model responder must stay silent. Returns an
    *  idempotent release. */
-  registerRemoteTerminalViewSubscriber(ptyId: string): () => void {
-    this.remoteTerminalViewSubscriberCounts.set(
-      ptyId,
-      (this.remoteTerminalViewSubscriberCounts.get(ptyId) ?? 0) + 1
-    )
+  registerRemoteTerminalViewSubscriber(ptyId: string, mobileClientId?: string): () => void {
+    if (mobileClientId) {
+      const clients = this.mobileTerminalQueryReplySubscriberCounts.get(ptyId) ?? new Map()
+      clients.set(mobileClientId, (clients.get(mobileClientId) ?? 0) + 1)
+      this.mobileTerminalQueryReplySubscriberCounts.set(ptyId, clients)
+    } else {
+      this.remoteTerminalViewSubscriberCounts.set(
+        ptyId,
+        (this.remoteTerminalViewSubscriberCounts.get(ptyId) ?? 0) + 1
+      )
+    }
     this.ensureSubscriberDrivenProviderAttach(ptyId)
     this.notifyRemoteTerminalViewPresenceChanged(ptyId)
     let released = false
@@ -13081,11 +13088,24 @@ export class OrcaRuntimeService {
         return
       }
       released = true
-      const next = (this.remoteTerminalViewSubscriberCounts.get(ptyId) ?? 1) - 1
-      if (next <= 0) {
-        this.remoteTerminalViewSubscriberCounts.delete(ptyId)
+      if (mobileClientId) {
+        const clients = this.mobileTerminalQueryReplySubscriberCounts.get(ptyId)
+        const nextClientCount = (clients?.get(mobileClientId) ?? 1) - 1
+        if (nextClientCount <= 0) {
+          clients?.delete(mobileClientId)
+        } else {
+          clients?.set(mobileClientId, nextClientCount)
+        }
+        if (clients?.size === 0) {
+          this.mobileTerminalQueryReplySubscriberCounts.delete(ptyId)
+        }
       } else {
-        this.remoteTerminalViewSubscriberCounts.set(ptyId, next)
+        const next = (this.remoteTerminalViewSubscriberCounts.get(ptyId) ?? 1) - 1
+        if (next <= 0) {
+          this.remoteTerminalViewSubscriberCounts.delete(ptyId)
+        } else {
+          this.remoteTerminalViewSubscriberCounts.set(ptyId, next)
+        }
       }
       this.notifyRemoteTerminalViewPresenceChanged(ptyId)
     }
@@ -13140,7 +13160,7 @@ export class OrcaRuntimeService {
   }
 
   private reconcileSubscriberDrivenProviderAttach(ptyId: string): void {
-    if (!this.hasRemoteTerminalViewSubscriber(ptyId)) {
+    if (!this.hasRawTerminalViewSubscriber(ptyId)) {
       return
     }
     const pending = this.subscriberDrivenProviderAttachesByPtyId.get(ptyId)
@@ -13154,7 +13174,7 @@ export class OrcaRuntimeService {
     this.subscriberDrivenProviderAttachInventoryWaiters.add(ptyId)
     void pending.then((attached) => {
       this.subscriberDrivenProviderAttachInventoryWaiters.delete(ptyId)
-      if (attached || !this.hasRemoteTerminalViewSubscriber(ptyId)) {
+      if (attached || !this.hasRawTerminalViewSubscriber(ptyId)) {
         return
       }
       if (this.subscriberDrivenProviderAttachesByPtyId.get(ptyId) === pending) {
@@ -13170,6 +13190,7 @@ export class OrcaRuntimeService {
       ptyId,
       (this.rawTerminalViewSubscriberCounts.get(ptyId) ?? 0) + 1
     )
+    this.ensureSubscriberDrivenProviderAttach(ptyId)
     this.notifyRemoteTerminalViewPresenceChanged(ptyId)
     let released = false
     return () => {
@@ -13191,40 +13212,46 @@ export class OrcaRuntimeService {
   hasRawTerminalViewSubscriber(ptyId: string): boolean {
     return (
       (this.rawTerminalViewSubscriberCounts.get(ptyId) ?? 0) > 0 ||
-      this.hasRemoteTerminalViewSubscriber(ptyId)
+      (this.remoteTerminalViewSubscriberCounts.get(ptyId) ?? 0) > 0 ||
+      (this.mobileTerminalQueryReplySubscriberCounts.get(ptyId)?.size ?? 0) > 0
     )
   }
 
   hasRemoteTerminalViewSubscriber(ptyId: string): boolean {
-    if ((this.remoteTerminalViewSubscriberCounts.get(ptyId) ?? 0) > 0) {
-      return true
-    }
-    return (this.mobileSubscribers.get(ptyId)?.size ?? 0) > 0
+    return (
+      (this.remoteTerminalViewSubscriberCounts.get(ptyId) ?? 0) > 0 ||
+      this.getMobileTerminalQueryReplyAuthorityClientId(ptyId) !== null
+    )
   }
 
   isMobileTerminalQueryReplyAuthority(ptyId: string, clientId: string): boolean {
+    return this.getMobileTerminalQueryReplyAuthorityClientId(ptyId) === clientId
+  }
+
+  private getMobileTerminalQueryReplyAuthorityClientId(ptyId: string): string | null {
     // Why: a passive phone watching desktop-sized output must not race the
     // desktop xterm. Mobile becomes reply authority only with the mobile floor.
     if (this.getDriver(ptyId).kind !== 'mobile') {
-      return false
+      return null
     }
     const subscribers = this.mobileSubscribers.get(ptyId)
-    if (!subscribers) {
-      return false
+    const queryReplySubscribers = this.mobileTerminalQueryReplySubscriberCounts.get(ptyId)
+    if (!subscribers || !queryReplySubscribers) {
+      return null
     }
     // Why: soft-leave resubscribe preserves the original subscription time but
     // reinserts the record. Elect fitted responders from that stable age, not
     // mutable Map order or passive desktop-mode watchers.
     let earliest: { clientId: string; subscribedAt: number } | null = null
     for (const subscriber of subscribers.values()) {
-      if (!subscriber.wasResizedToPhone) {
+      if (!subscriber.wasResizedToPhone || !queryReplySubscribers.has(subscriber.clientId)) {
         continue
       }
       if (earliest === null || subscriber.subscribedAt < earliest.subscribedAt) {
         earliest = subscriber
       }
     }
-    return earliest?.clientId === clientId
+    return earliest?.clientId ?? null
   }
 
   subscribeToFitOverrideChanges(
@@ -16012,6 +16039,7 @@ export class OrcaRuntimeService {
     // Clean up new mobile state for this PTY
     this.mobileSubscribers.delete(ptyId)
     this.remoteTerminalViewSubscriberCounts.delete(ptyId)
+    this.mobileTerminalQueryReplySubscriberCounts.delete(ptyId)
     this.rawTerminalViewSubscriberCounts.delete(ptyId)
     this.mobileDisplayModes.delete(ptyId)
     this.resizeListeners.delete(ptyId)
