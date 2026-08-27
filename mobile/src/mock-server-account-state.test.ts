@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   consumeMockCodexResetCredit,
+  consumeMockGrokResetCredit,
   createMockAccountsSnapshot,
   getMockCodexResetScope,
   resetMockAccountState,
@@ -41,6 +42,25 @@ describe('mock account reset state', () => {
     expect(team.rateLimits.codex.session?.usedPercent).toBe(100)
     expect(team.rateLimits.codex.rateLimitResetCredits.availableCount).toBe(1)
     expect(getMockCodexResetScope()?.accountId).toBe('codex-team')
+  })
+
+  it('exposes Cursor buckets and Grok reset inventory, then replays Grok redeem without a token id', () => {
+    const snapshot = createMockAccountsSnapshot()
+    expect(snapshot.rateLimits.cursor?.usageMetadata?.accountEmail).toBe('dev@example.com')
+    expect(snapshot.rateLimits.cursor?.usageMetadata?.subscriptionStatus).toBe('active')
+    expect(snapshot.rateLimits.cursor?.buckets?.map((bucket) => bucket.name)).toEqual([
+      'Cursor Models',
+      'Other Models',
+      'Grok Bot'
+    ])
+    expect(snapshot.rateLimits.grok?.rateLimitResetCredits?.availableCount).toBe(1)
+
+    const first = consumeMockGrokResetCredit(FIRST_OPERATION_ID)
+    expect(first).toEqual({ outcome: 'reset' })
+    expect(consumeMockGrokResetCredit(FIRST_OPERATION_ID)).toEqual(first)
+    const after = createMockAccountsSnapshot()
+    expect(after.rateLimits.grok?.rateLimitResetCredits?.availableCount).toBe(0)
+    expect(after.rateLimits.grok?.weekly?.usedPercent).toBe(0)
   })
 
   it('replays the same operation result and authoritatively discards a stale attempt', () => {

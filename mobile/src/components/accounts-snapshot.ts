@@ -29,6 +29,14 @@ const RateLimitResetCreditsSchema = z
   })
   .passthrough()
 
+const UsageRateLimitMetadataSchema = z
+  .object({
+    accountEmail: z.string().min(1).optional(),
+    subscriptionStatus: z.string().min(1).optional(),
+    authProvenance: z.string().min(1).optional()
+  })
+  .passthrough()
+
 export const ProviderRateLimitsSchema = z
   .object({
     provider: z.enum([
@@ -39,7 +47,8 @@ export const ProviderRateLimitsSchema = z
       'kimi',
       'minimax',
       'grok',
-      'antigravity'
+      'antigravity',
+      'cursor'
     ]),
     session: RateLimitWindowSchema.nullable(),
     weekly: RateLimitWindowSchema.nullable(),
@@ -49,6 +58,8 @@ export const ProviderRateLimitsSchema = z
       .array(RateLimitWindowSchema.extend({ name: z.string().min(1) }).passthrough())
       .optional(),
     rateLimitResetCredits: RateLimitResetCreditsSchema.nullable().optional(),
+    planType: z.string().min(1).nullable().optional(),
+    usageMetadata: UsageRateLimitMetadataSchema.optional(),
     updatedAt: TimestampSchema,
     error: z.string().nullable(),
     status: z.enum(['idle', 'fetching', 'ok', 'error', 'unavailable'])
@@ -174,6 +185,10 @@ export const AccountsSnapshotSchema = z
       .object({
         claude: ProviderRateLimitsSchema.nullable(),
         codex: ProviderRateLimitsSchema.nullable(),
+        // Why: older hosts omitted these; decode them as first-class when present
+        // so paired clients can show Cursor buckets and Grok reset tokens.
+        grok: ProviderRateLimitsSchema.nullable().optional(),
+        cursor: ProviderRateLimitsSchema.nullable().optional(),
         // Why: protocol-compatible hosts from before runtime targeting omit
         // these fields; their account selection semantics were host-only.
         claudeTarget: RateLimitRuntimeTargetSchema.default(HostRateLimitRuntimeTarget),
@@ -197,6 +212,20 @@ export const AccountsSnapshotSchema = z
         code: 'custom',
         message: 'Codex limits use the wrong provider identity',
         path: ['rateLimits', 'codex', 'provider']
+      })
+    }
+    if (snapshot.rateLimits.grok && snapshot.rateLimits.grok.provider !== 'grok') {
+      context.addIssue({
+        code: 'custom',
+        message: 'Grok limits use the wrong provider identity',
+        path: ['rateLimits', 'grok', 'provider']
+      })
+    }
+    if (snapshot.rateLimits.cursor && snapshot.rateLimits.cursor.provider !== 'cursor') {
+      context.addIssue({
+        code: 'custom',
+        message: 'Cursor limits use the wrong provider identity',
+        path: ['rateLimits', 'cursor', 'provider']
       })
     }
     for (const [index, entry] of snapshot.rateLimits.inactiveClaudeAccounts.entries()) {

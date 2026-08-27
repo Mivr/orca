@@ -128,6 +128,16 @@ export function GrokUsagePane(): React.JSX.Element {
           value={grok?.weekly?.resetDescription ?? '—'}
           icon={<CalendarClock className="size-4" />}
         />
+        {grok?.rateLimitResetCredits ? (
+          <StatCard
+            label={translate(
+              'auto.components.stats.GrokUsagePane.resetTokens',
+              'Usage-limit resets'
+            )}
+            value={String(grok.rateLimitResetCredits.availableCount)}
+            icon={<Sparkles className="size-4" />}
+          />
+        ) : null}
       </div>
 
       {grok?.usageMetadata?.authProvenance ? (

@@ -24,7 +24,11 @@ export type {
   RuntimeTerminalAgentStatusEvent
 } from './runtime-terminal-contracts'
 export type { MessageWaitResult } from './runtime-message-waiters'
-export type { AccountsSnapshot, CodexRateLimitResetRpcResult } from './runtime-account-controller'
+export type {
+  AccountsSnapshot,
+  CodexRateLimitResetRpcResult,
+  GrokRateLimitResetRpcResult
+} from './runtime-account-controller'
 export type {
   MobileNotificationDispatchEvent,
   MobileNotificationDismissEvent,

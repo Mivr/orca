@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  getBucketResetLabel,
+  getBucketUsageBarState,
+  getHostProviderRateLimits,
   getInactiveProviderUsage,
   getUsageBarState,
   getWindowResetLabel,
@@ -51,7 +54,9 @@ function makeSnapshot(
       claudeTarget: { runtime: 'host', wslDistro: null },
       codexTarget: { runtime: 'host', wslDistro: null },
       inactiveClaudeAccounts: overrides.inactiveClaudeAccounts ?? [],
-      inactiveCodexAccounts: overrides.inactiveCodexAccounts ?? []
+      inactiveCodexAccounts: overrides.inactiveCodexAccounts ?? [],
+      grok: null,
+      cursor: null
     }
   }
 }
@@ -206,6 +211,69 @@ describe('getUsageBarState', () => {
       usedPercent: null,
       unavailable: false,
       loading: true
+    })
+  })
+})
+
+describe('host provider Cursor/Grok extras', () => {
+  it('reads first-class grok and cursor rate-limit slots from the snapshot', () => {
+    const grok = makeLimits({
+      provider: 'grok',
+      status: 'ok',
+      weekly: { usedPercent: 13, windowMinutes: 10_080, resetsAt: 1, resetDescription: 'Thu' }
+    })
+    const cursor = makeLimits({
+      provider: 'cursor',
+      status: 'ok',
+      buckets: [
+        {
+          name: 'Cursor Models',
+          usedPercent: 41,
+          windowMinutes: 43_200,
+          resetsAt: 2,
+          resetDescription: 'Aug 27'
+        }
+      ]
+    })
+    const snapshot = {
+      ...makeSnapshot(),
+      rateLimits: {
+        ...makeSnapshot().rateLimits,
+        grok,
+        cursor
+      }
+    }
+
+    expect(getHostProviderRateLimits(snapshot, 'grok')).toBe(grok)
+    expect(getHostProviderRateLimits(snapshot, 'cursor')).toBe(cursor)
+  })
+
+  it('maps named Cursor buckets to the same bar/reset helpers as session windows', () => {
+    const now = Date.parse('2026-08-27T12:00:00Z')
+    const limits = makeLimits({
+      provider: 'cursor',
+      status: 'ok',
+      buckets: [
+        {
+          name: 'Grok Bot',
+          usedPercent: 0,
+          windowMinutes: 10_080,
+          resetsAt: now + 4 * 24 * 60 * 60_000,
+          resetDescription: 'Aug 31'
+        }
+      ]
+    })
+
+    expect(getBucketUsageBarState(limits, 'Grok Bot')).toEqual({
+      usedPercent: 0,
+      unavailable: false,
+      loading: false
+    })
+    expect(getBucketResetLabel(limits, 'Grok Bot', now)).toBe('Resets in 4d')
+    expect(getBucketUsageBarState(limits, 'Cursor Models')).toEqual({
+      usedPercent: null,
+      unavailable: true,
+      loading: false
     })
   })
 })

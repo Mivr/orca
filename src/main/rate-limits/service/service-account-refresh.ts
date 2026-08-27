@@ -1,4 +1,5 @@
 import { consumeCodexRateLimitResetCredit } from '../codex-fetcher'
+import { consumeGrokRateLimitResetCredit } from '../grok-fetcher'
 import { RateLimitServiceInactiveAccounts } from './service-inactive-accounts'
 import {
   normalizeCodexAccountSelectionTarget,
@@ -27,6 +28,23 @@ export abstract class RateLimitServiceAccountRefresh extends RateLimitServiceIna
   async refreshGrok(): Promise<RateLimitState> {
     await this.fetchGrokOnly({ force: true })
     return this.getState()
+  }
+
+  async consumeGrokRateLimitResetCredit(): Promise<CodexRateLimitResetResult> {
+    const weeklyUsed = this.state.grok?.weekly?.usedPercent ?? 0
+    // Why: SuperGrok reset tokens are one-time; spending one at 0% weekly would
+    // burn the token without changing any visible usage window.
+    if (this.state.grok?.weekly && weeklyUsed <= 0) {
+      return { outcome: 'nothingToReset', state: this.getState() }
+    }
+    try {
+      const outcome = await consumeGrokRateLimitResetCredit()
+      await this.fetchGrokOnly({ force: true })
+      return { outcome, state: this.getState() }
+    } catch (error) {
+      await this.fetchGrokOnly({ force: true })
+      throw error
+    }
   }
 
   invalidateMiniMaxCredentialState(): void {

@@ -38,9 +38,17 @@ export type CodexRateLimitResetRpcResult = {
     }
 )
 
+export type GrokRateLimitResetRpcResult = {
+  outcome: CodexRateLimitResetOutcome
+  snapshot: AccountsSnapshot
+}
+
 export class RuntimeAccountController {
   private services: RuntimeAccountServices | null = null
   private commitMessageAgentEnvironment: CommitMessageAgentEnvironmentResolvers | null = null
+  // Why: Grok has one host CLI login, so replay is keyed only on the phone's
+  // attempt id — a lost reply must not spend a second SuperGrok reset token.
+  private grokResetReplayByIdempotencyKey = new Map<string, GrokRateLimitResetRpcResult>()
 
   setServices(services: RuntimeAccountServices): void {
     this.services = services
@@ -121,6 +129,27 @@ export class RuntimeAccountController {
       }
     }
     return { outcome: result.outcome, scope: result.scope, snapshot }
+  }
+
+  async consumeGrokRateLimitResetCredit(
+    idempotencyKey: string
+  ): Promise<GrokRateLimitResetRpcResult> {
+    const replay = this.grokResetReplayByIdempotencyKey.get(idempotencyKey)
+    if (replay) {
+      return replay
+    }
+    const { claudeAccounts, codexAccounts, rateLimits } = this.requireServices()
+    const { outcome } = await rateLimits.consumeGrokRateLimitResetCredit()
+    const result = {
+      outcome,
+      snapshot: {
+        claude: claudeAccounts.listAccounts(),
+        codex: codexAccounts.listAccounts(),
+        rateLimits: rateLimits.getState()
+      }
+    }
+    this.grokResetReplayByIdempotencyKey.set(idempotencyKey, result)
+    return result
   }
 
   removeClaude(accountId: string): Promise<ClaudeRateLimitAccountsState> {

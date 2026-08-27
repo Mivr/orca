@@ -49,6 +49,14 @@ export const ConsumeCodexResetCreditParams = z
   })
   .strict()
 
+export const ConsumeGrokResetCreditParams = z
+  .object({
+    // Why: Grok has a single host CLI login, so there is no Codex account-scope
+    // journal — the phone still owns the attempt key so a lost reply can replay.
+    idempotencyKey: z.uuid('Invalid idempotencyKey')
+  })
+  .strict()
+
 export const AddClaudeFromConfigDirParams = z.object({
   configDir: z.string().min(1, 'Missing configDir'),
   runtime: z.enum(['host', 'wsl']).optional(),
