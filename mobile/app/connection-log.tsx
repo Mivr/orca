@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useRouter } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import * as Clipboard from 'expo-clipboard'
 import Constants from 'expo-constants'
-import { ChevronLeft, Copy, Check } from 'lucide-react-native'
+import { ChevronLeft, Copy, Check, Send } from 'lucide-react-native'
 import { colors, spacing, typography } from '../src/theme/mobile-theme'
 import { ConnectionLog } from '../src/components/ConnectionLog'
 import { loadHosts } from '../src/transport/host-store'
@@ -17,6 +17,7 @@ import {
 } from '../src/transport/client-context-connection-metrics'
 import { buildConnectionDiagnosticsReport } from '../src/diagnostics/connection-diagnostics-report'
 import { diagnoseConnection } from '../src/diagnostics/connection-diagnostics-analysis'
+import { submitConnectionDiagnostics } from '../src/diagnostics/connection-diagnostics-submission'
 import type { ConnectionLogEntry, HostProfile } from '../src/transport/types'
 
 // Why: getSnapshot must be referentially stable when there's no data —
@@ -28,10 +29,14 @@ const EMPTY_ENTRIES: readonly ConnectionLogEntry[] = []
 // log fills live instead of showing a stale tail.
 export default function ConnectionLogScreen() {
   const router = useRouter()
+  const params = useLocalSearchParams<{ hostId?: string }>()
   const insets = useSafeAreaInsets()
   const [hosts, setHosts] = useState<HostProfile[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [submissionState, setSubmissionState] = useState<'idle' | 'sending' | 'sent' | 'failed'>(
+    'idle'
+  )
 
   useEffect(() => {
     let stale = false
@@ -40,12 +45,12 @@ export default function ConnectionLogScreen() {
         return
       }
       setHosts(loaded)
-      setSelectedId((prev) => prev ?? loaded[0]?.id ?? null)
+      setSelectedId((prev) => prev ?? params.hostId ?? loaded[0]?.id ?? null)
     })
     return () => {
       stale = true
     }
-  }, [])
+  }, [params.hostId])
 
   const selected = hosts.find((h) => h.id === selectedId) ?? null
   const { state } = useHostClient(selected?.id)
@@ -93,6 +98,38 @@ export default function ConnectionLogScreen() {
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }, [selected, state, reconnectAttempts, lastConnectedAt, entries, activePath, pendingPath])
+
+  const sendDiagnostics = useCallback(async () => {
+    if (!selected || submissionState === 'sending') {
+      return
+    }
+    setSubmissionState('sending')
+    const appVersion = Constants.expoConfig?.version ?? 'unknown'
+    const platform = `${Platform.OS} ${Platform.Version ?? ''}`.trim()
+    const report = buildConnectionDiagnosticsReport({
+      hostName: selected.name,
+      endpoint: selected.endpoint,
+      state,
+      reconnectAttempts,
+      lastConnectedAt,
+      platform,
+      appVersion,
+      entries,
+      activePath,
+      pendingPath
+    })
+    const result = await submitConnectionDiagnostics({ report, appVersion, platform })
+    setSubmissionState(result.ok ? 'sent' : 'failed')
+  }, [
+    selected,
+    submissionState,
+    state,
+    reconnectAttempts,
+    lastConnectedAt,
+    entries,
+    activePath,
+    pendingPath
+  ])
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
@@ -143,6 +180,29 @@ export default function ConnectionLogScreen() {
               <Text style={styles.diagnosisHeading}>What this suggests</Text>
               <Text style={styles.diagnosisText}>{diagnosis.likelyCause}</Text>
               <Text style={styles.diagnosisNext}>{diagnosis.nextStep}</Text>
+              <Text style={styles.privacyHint}>
+                Sends redacted connection events only—never terminal contents or credentials.
+              </Text>
+              <Pressable
+                style={styles.sendButton}
+                onPress={() => void sendDiagnostics()}
+                disabled={submissionState === 'sending'}
+              >
+                {submissionState === 'sent' ? (
+                  <Check size={14} color={colors.statusGreen} />
+                ) : (
+                  <Send size={14} color={colors.textPrimary} />
+                )}
+                <Text style={styles.sendButtonText}>
+                  {submissionState === 'sending'
+                    ? 'Sending…'
+                    : submissionState === 'sent'
+                      ? 'Diagnostics sent'
+                      : submissionState === 'failed'
+                        ? 'Retry sending'
+                        : 'Send diagnostics to Orca'}
+                </Text>
+              </Pressable>
             </View>
           )}
           {entries.length > 0 ? (
@@ -244,6 +304,28 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 18,
     marginTop: spacing.xs
+  },
+  privacyHint: {
+    marginTop: spacing.sm,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.textMuted
+  },
+  sendButton: {
+    marginTop: spacing.md,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 8,
+    backgroundColor: colors.bgRaised
+  },
+  sendButtonText: {
+    fontSize: typography.metaSize,
+    fontWeight: '600',
+    color: colors.textPrimary
   },
   copyButton: {
     flexDirection: 'row',
