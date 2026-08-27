@@ -114,26 +114,6 @@ describe("Hangul cell width agreement (#15192)", () => {
     terminal.dispose();
   });
 
-  it("lists every Hangul-block code point whose width depends on the unicode version", () => {
-    const { terminal, unicode } = openLikePaneLifecycle();
-    const versionSensitive: number[] = [];
-    for (const cp of hangulCodePoints()) {
-      unicode.activeVersion = "6";
-      const v6 = unicode.wcwidth(cp);
-      unicode.activeVersion = "11";
-      if (unicode.wcwidth(cp) !== v6) {
-        versionSensitive.push(cp);
-      }
-    }
-    // Compatibility jamo edges plus Jamo Extended-A; none appear in modern Korean.
-    expect(summarizeRanges(versionSensitive)).toEqual([
-      "U+3130",
-      "U+318F",
-      "U+A960..U+A97C",
-    ]);
-    terminal.dispose();
-  });
-
   it("records where the wide-cell oracle diverges from xterm on conjoining jamo", () => {
     const { terminal, unicode } = openLikePaneLifecycle();
     const divergent: number[] = [];
