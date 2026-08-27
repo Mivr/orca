@@ -1,4 +1,4 @@
-import { connectionLogStore } from './connection-log-buffer'
+import { connectionLogStore } from './persisted-connection-log-store'
 import { loadHosts } from './host-store'
 import { openHostLogicalClient } from './host-logical-client'
 import type { HostClientOpenRegistry } from './host-client-open-registry'
@@ -65,6 +65,7 @@ export async function openHostClientEntry(
       id: `host-open-${ticket.generation}-${Date.now()}`,
       ts: Date.now(),
       level: 'error',
+      code: 'host-open-failed',
       message: 'Host client open failed',
       detail: `${category}; retry ${retry.nextDelayMs}ms (failure ${retry.failureCount})`
     })

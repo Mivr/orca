@@ -21,6 +21,7 @@ vi.mock('./mobile-relay-e2ee-link', () => ({
 }))
 
 import { connectMobileRelayRpcSession } from './mobile-relay-rpc-session'
+import type { ConnectionLogSink } from './types'
 
 const relay = {
   v: 1 as const,
@@ -31,7 +32,7 @@ const relay = {
   e2eeFraming: 2 as const
 }
 
-async function authenticateSession() {
+async function authenticateSession(onLog?: ConnectionLogSink) {
   const session = connectMobileRelayRpcSession({
     relay,
     resumeToken: 'resume-secret',
@@ -39,7 +40,8 @@ async function authenticateSession() {
     resumeConfirmReqId: 'confirm-1',
     deviceToken: 'device-token',
     desktopPublicKeyB64: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
-    requestTimeoutMs: 30_000
+    requestTimeoutMs: 30_000,
+    onLog
   })
   fakes.linkOptions!.onHello({
     type: 'relay-hello',
@@ -103,7 +105,8 @@ describe('mobile relay RPC session liveness', () => {
   })
 
   it('disconnects after two fair foreground misses', async () => {
-    const session = await authenticateSession()
+    const onLog = vi.fn<ConnectionLogSink>()
+    const session = await authenticateSession(onLog)
 
     session.notifyForeground('focus')
     expect(sentRequests().map(({ method }) => method)).toEqual(['status.get'])
@@ -114,6 +117,16 @@ describe('mobile relay RPC session liveness', () => {
 
     expect(session.getState()).toBe('disconnected')
     expect(fakes.close).toHaveBeenCalledOnce()
+    expect(onLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 'liveness-timeout',
+        path: 'relay',
+        message: 'Relay health check failed',
+        detail: expect.stringMatching(
+          /^probe-timeout; 2\/2 probes missed; last authenticated activity \d+ms ago$/
+        )
+      })
+    )
   })
 
   it('rate-limits foreground sequences without suppressing a retry', async () => {

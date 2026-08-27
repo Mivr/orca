@@ -53,4 +53,40 @@ describe('connection log buffer', () => {
     store.append('host-a', entry(2))
     expect(onA).toHaveBeenCalledTimes(1)
   })
+
+  it('hydrates persisted history without dropping events recorded during app startup', async () => {
+    let finishLoad: (entries: readonly ConnectionLogEntry[]) => void = () => {}
+    const load = vi.fn(
+      () =>
+        new Promise<readonly ConnectionLogEntry[]>((resolve) => {
+          finishLoad = resolve
+        })
+    )
+    const save = vi.fn(async () => {})
+    const store = createConnectionLogStore(3, { load, save })
+
+    store.append('host-a', entry(3))
+    finishLoad([entry(1), entry(2)])
+    await store.hydrate('host-a')
+
+    expect(store.get('host-a').map((e) => e.id)).toEqual(['log-1', 'log-2', 'log-3'])
+    await vi.waitFor(() => expect(save).toHaveBeenCalled())
+    expect(save).toHaveBeenLastCalledWith('host-a', [entry(1), entry(2), entry(3)])
+  })
+
+  it('redacts credentials before retaining or persisting an event', async () => {
+    const save = vi.fn(async () => {})
+    const store = createConnectionLogStore(3, { load: async () => [], save })
+
+    store.append('host-a', {
+      ...entry(1),
+      detail: 'resumeToken=do-not-copy deviceToken:also-secret'
+    })
+    await store.hydrate('host-a')
+
+    expect(store.get('host-a')[0]?.detail).toBe('resumeToken=[redacted] deviceToken:[redacted]')
+    await vi.waitFor(() => expect(save).toHaveBeenCalled())
+    expect(JSON.stringify(save.mock.calls)).not.toContain('do-not-copy')
+    expect(JSON.stringify(save.mock.calls)).not.toContain('also-secret')
+  })
 })

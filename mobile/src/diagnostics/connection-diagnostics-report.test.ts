@@ -50,6 +50,39 @@ describe('buildConnectionDiagnosticsReport', () => {
     expect(report).toContain('Endpoint: 192.168.1.50:6768')
     expect(report).not.toContain('(Tailscale)')
     expect(report).toContain('Last connected: never this session')
-    expect(report).toContain('No connection events recorded this session.')
+    expect(report).toContain('No connection events recorded.')
+  })
+
+  it('explains the most likely cause and redacts credentials before copying', () => {
+    const report = buildConnectionDiagnosticsReport({
+      hostName: 'Host 3',
+      endpoint: 'ws://100.88.90.25:6768',
+      state: 'reconnecting',
+      reconnectAttempts: 4,
+      lastConnectedAt: null,
+      platform: 'android 36',
+      appVersion: '0.0.46',
+      activePath: 'tailscale',
+      pendingPath: 'relay',
+      entries: [
+        {
+          id: 'relay-failure',
+          ts: NOW - 5_000,
+          level: 'error',
+          message: 'Relay: relay dial failed',
+          detail:
+            'RelayDirectorHttpError: relay director resolve failed (503); retry after 30000ms; resumeToken=secret-resume-token'
+        }
+      ],
+      nowMs: NOW
+    })
+
+    expect(report).toContain(
+      'Likely cause: Relay service was temporarily unavailable and asked Orca to retry in 30s.'
+    )
+    expect(report).toContain('Path: active=tailscale; recovery=relay')
+    expect(report).toContain('Next step: Keep Orca open; recovery should retry automatically.')
+    expect(report).toContain('resumeToken=[redacted]')
+    expect(report).not.toContain('secret-resume-token')
   })
 })

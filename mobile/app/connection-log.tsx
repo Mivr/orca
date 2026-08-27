@@ -8,13 +8,15 @@ import { ChevronLeft, Copy, Check } from 'lucide-react-native'
 import { colors, spacing, typography } from '../src/theme/mobile-theme'
 import { ConnectionLog } from '../src/components/ConnectionLog'
 import { loadHosts } from '../src/transport/host-store'
-import { connectionLogStore } from '../src/transport/connection-log-buffer'
+import { connectionLogStore } from '../src/transport/persisted-connection-log-store'
 import { useHostClient } from '../src/transport/client-context'
 import {
+  useConnectionPathStatus,
   useLastConnectedAt,
   useReconnectAttempt
 } from '../src/transport/client-context-connection-metrics'
 import { buildConnectionDiagnosticsReport } from '../src/diagnostics/connection-diagnostics-report'
+import { diagnoseConnection } from '../src/diagnostics/connection-diagnostics-analysis'
 import type { ConnectionLogEntry, HostProfile } from '../src/transport/types'
 
 // Why: getSnapshot must be referentially stable when there's no data —
@@ -49,6 +51,13 @@ export default function ConnectionLogScreen() {
   const { state } = useHostClient(selected?.id)
   const reconnectAttempts = useReconnectAttempt(selected?.id)
   const lastConnectedAt = useLastConnectedAt(selected?.id)
+  const { activePath, pendingPath } = useConnectionPathStatus(selected?.id)
+
+  useEffect(() => {
+    if (selectedId) {
+      void connectionLogStore.hydrate(selectedId)
+    }
+  }, [selectedId])
 
   const subscribe = useCallback(
     (listener: () => void) =>
@@ -60,6 +69,9 @@ export default function ConnectionLogScreen() {
     [selectedId]
   )
   const entries = useSyncExternalStore(subscribe, getSnapshot)
+  const diagnosis = selected
+    ? diagnoseConnection({ endpoint: selected.endpoint, state, activePath, pendingPath, entries })
+    : null
 
   const copyDiagnostics = useCallback(async () => {
     if (!selected) {
@@ -73,12 +85,14 @@ export default function ConnectionLogScreen() {
       lastConnectedAt,
       platform: `${Platform.OS} ${Platform.Version ?? ''}`.trim(),
       appVersion: Constants.expoConfig?.version ?? 'unknown',
-      entries
+      entries,
+      activePath,
+      pendingPath
     })
     await Clipboard.setStringAsync(report)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }, [selected, state, reconnectAttempts, lastConnectedAt, entries])
+  }, [selected, state, reconnectAttempts, lastConnectedAt, entries, activePath, pendingPath])
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + spacing.sm }]}>
@@ -86,7 +100,7 @@ export default function ConnectionLogScreen() {
         <Pressable style={styles.backButton} onPress={() => router.back()}>
           <ChevronLeft size={22} color={colors.textSecondary} />
         </Pressable>
-        <Text style={styles.heading}>Connection log</Text>
+        <Text style={styles.heading}>Network diagnostics</Text>
       </View>
 
       {hosts.length > 1 && (
@@ -121,14 +135,21 @@ export default function ConnectionLogScreen() {
               ) : (
                 <Copy size={14} color={colors.textSecondary} />
               )}
-              <Text style={styles.copyButtonText}>{copied ? 'Copied' : 'Copy diagnostics'}</Text>
+              <Text style={styles.copyButtonText}>{copied ? 'Copied' : 'Copy report'}</Text>
             </Pressable>
           </View>
+          {diagnosis && (
+            <View style={styles.diagnosisCard}>
+              <Text style={styles.diagnosisHeading}>What this suggests</Text>
+              <Text style={styles.diagnosisText}>{diagnosis.likelyCause}</Text>
+              <Text style={styles.diagnosisNext}>{diagnosis.nextStep}</Text>
+            </View>
+          )}
           {entries.length > 0 ? (
             <ConnectionLog entries={[...entries]} title={selected.name} />
           ) : (
             <Text style={styles.emptyText}>
-              No connection events yet this session. Events appear as the app dials this host.
+              No connection events yet. Events appear as the app dials this host.
             </Text>
           )}
         </>
@@ -198,6 +219,31 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: typography.metaSize,
     color: colors.textSecondary
+  },
+  diagnosisCard: {
+    backgroundColor: colors.bgPanel,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderSubtle,
+    borderRadius: 10,
+    padding: spacing.md,
+    marginBottom: spacing.md
+  },
+  diagnosisHeading: {
+    fontSize: typography.metaSize,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: spacing.xs
+  },
+  diagnosisText: {
+    fontSize: typography.metaSize,
+    color: colors.textPrimary,
+    lineHeight: 18
+  },
+  diagnosisNext: {
+    fontSize: typography.metaSize,
+    color: colors.textSecondary,
+    lineHeight: 18,
+    marginTop: spacing.xs
   },
   copyButton: {
     flexDirection: 'row',
