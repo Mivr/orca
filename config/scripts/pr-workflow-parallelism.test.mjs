@@ -50,9 +50,9 @@ describe('PR workflow parallelism', () => {
   it('shards the general test suite across Node 24 and Node 26', () => {
     expect(workflow.jobs.test.strategy.matrix.node).toEqual(['24', '26'])
     expect(workflow.jobs.test.strategy.matrix.shard).toEqual(
-      Array.from({ length: 16 }, (_, index) => index + 1)
+      Array.from({ length: 8 }, (_, index) => index + 1)
     )
-    expect(workflow.jobs.test.strategy.matrix.shard_total).toEqual([16])
+    expect(workflow.jobs.test.strategy.matrix.shard_total).toEqual([8])
     const testStep = workflow.jobs.test.steps.find((step) => step.name === 'Test shard')
     const installStep = workflow.jobs.test.steps.find(
       (step) => step.uses === './.github/actions/install-node-dependencies'
@@ -244,7 +244,10 @@ describe('PR workflow parallelism', () => {
     expect(installFor('shell_contracts').with['native-runtime']).toBe('node')
     expect(installFor('test').with['native-runtime']).toBe('node')
     expect(installFor('package').with['native-runtime']).toBe('electron')
+    expect(installFor('package_windows').with['native-runtime']).toBe('node')
+    expect(installFor('package_windows').with['persist-native-cache']).toBe('false')
 
+    expect(dependencyAction.inputs['persist-native-cache'].default).toBe('true')
     expect(
       dependencyAction.runs.steps.find((step) => step.name === 'Use external node-gyp').if
     ).toBe("inputs.native-runtime != 'none'")
@@ -295,14 +298,32 @@ describe('PR workflow parallelism', () => {
     // overwritten and one after the rebuild would never save a hit.
     expect(installIndex).toBeLessThan(cacheIndex)
     expect(cacheIndex).toBeLessThan(prepareIndex)
-    expect(steps[cacheIndex].if).toBe("inputs.native-runtime != 'none'")
+    expect(steps[cacheIndex].if).toBe(
+      "inputs.native-runtime != 'none' && inputs.persist-native-cache != 'false'"
+    )
+    const restoreOnly = steps.find(
+      (step) => step.name === 'Restore compiled native modules without saving'
+    )
+    expect(restoreOnly.if).toBe(
+      "inputs.native-runtime != 'none' && inputs.persist-native-cache == 'false'"
+    )
+    expect(restoreOnly.uses).toBe('actions/cache/restore@v5')
     // Native artifacts are ABI-bound: a key missing either dimension serves a build
     // that cannot load, and ensure-native-runtime would recompile it anyway.
-    expect(steps[cacheIndex].with.key).toContain('${{ inputs.native-runtime }}')
-    expect(steps[cacheIndex].with.key).toContain('steps.requested-node.outputs.node-version')
-    expect(steps[cacheIndex].with.key).toContain('config/patches/node-pty@1.1.0.patch')
-    // No restore-keys: a partial-match key is exactly the ABI-mismatched build above.
-    expect(steps[cacheIndex].with['restore-keys']).toBeUndefined()
+    for (const cacheStep of [steps[cacheIndex], restoreOnly]) {
+      expect(cacheStep.with.key).toContain('${{ inputs.native-runtime }}')
+      expect(cacheStep.with.key).toContain('${{ runner.os }}')
+      expect(cacheStep.with.key).toContain('${{ runner.arch }}')
+      expect(cacheStep.with.key).toContain('steps.requested-node.outputs.node-version')
+      expect(cacheStep.with.key).toContain('config/patches/node-pty@1.1.0.patch')
+      expect(cacheStep.with.key).toContain(
+        'config/patches/@vscode__windows-process-tree@0.8.0.patch'
+      )
+      expect(cacheStep.with.path).toContain('node-pty@*/node_modules/node-pty/build')
+      expect(cacheStep.with.path).toContain('windows-native-registry@')
+      expect(cacheStep.with.path).toContain('@vscode+windows-process-tree@')
+      expect(cacheStep.with['restore-keys']).toBeUndefined()
+    }
   })
 
   it('reuses TypeScript incremental state across typecheck runs', () => {

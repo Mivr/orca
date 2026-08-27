@@ -1,5 +1,5 @@
 name: Install Node dependencies
-description: Installs the Node toolchain and repository dependencies for Linux CI jobs.
+description: Installs the Node toolchain and repository dependencies for CI jobs.
 
 inputs:
   native-runtime:
@@ -10,6 +10,15 @@ inputs:
     description: Node.js version override; defaults to the version declared in package.json.
     required: false
     default: ''
+  persist-native-cache:
+    description: Save restored native modules at job end. Set false when a later step overwrites the same path with a different ABI.
+    required: false
+    default: 'true'
+
+outputs:
+  node-version:
+    description: Resolved Node.js version used for the install.
+    value: ${{ steps.requested-node.outputs.node-version || steps.default-node.outputs.node-version }}
 
 runs:
   using: composite
@@ -80,12 +89,27 @@ runs:
     # ensure-native-runtime node-gyp-compiles it in every job that asks for a runtime.
     # The artifacts are ABI-bound, so the key carries the target runtime, the resolved
     # Node version, and the patch whose contents the build has to match.
+    # Windows extra globs are empty on Linux. No restore-keys: a partial-match key is
+    # an ABI-mismatched build, and ensure-native-runtime would recompile it anyway.
     - name: Restore compiled native modules
-      if: inputs.native-runtime != 'none'
+      if: inputs.native-runtime != 'none' && inputs.persist-native-cache != 'false'
       uses: actions/cache@v5
       with:
-        path: node_modules/.pnpm/node-pty@*/node_modules/node-pty/build
-        key: native-modules-${{ runner.os }}-${{ runner.arch }}-${{ inputs.native-runtime }}-node${{ steps.default-node.outputs.node-version }}${{ steps.requested-node.outputs.node-version }}-${{ hashFiles('pnpm-lock.yaml', 'config/patches/node-pty@1.1.0.patch') }}
+        path: |
+          node_modules/.pnpm/node-pty@*/node_modules/node-pty/build
+          node_modules/.pnpm/windows-native-registry@*/node_modules/windows-native-registry/build
+          node_modules/.pnpm/@vscode+windows-process-tree@*/node_modules/@vscode/windows-process-tree/build
+        key: native-modules-${{ runner.os }}-${{ runner.arch }}-${{ inputs.native-runtime }}-node${{ steps.default-node.outputs.node-version }}${{ steps.requested-node.outputs.node-version }}-${{ hashFiles('pnpm-lock.yaml', 'config/patches/node-pty@1.1.0.patch', 'config/patches/@vscode__windows-process-tree@0.8.0.patch') }}
+
+    - name: Restore compiled native modules without saving
+      if: inputs.native-runtime != 'none' && inputs.persist-native-cache == 'false'
+      uses: actions/cache/restore@v5
+      with:
+        path: |
+          node_modules/.pnpm/node-pty@*/node_modules/node-pty/build
+          node_modules/.pnpm/windows-native-registry@*/node_modules/windows-native-registry/build
+          node_modules/.pnpm/@vscode+windows-process-tree@*/node_modules/@vscode/windows-process-tree/build
+        key: native-modules-${{ runner.os }}-${{ runner.arch }}-${{ inputs.native-runtime }}-node${{ steps.default-node.outputs.node-version }}${{ steps.requested-node.outputs.node-version }}-${{ hashFiles('pnpm-lock.yaml', 'config/patches/node-pty@1.1.0.patch', 'config/patches/@vscode__windows-process-tree@0.8.0.patch') }}
 
     - name: Prepare native runtime
       if: inputs.native-runtime != 'none'

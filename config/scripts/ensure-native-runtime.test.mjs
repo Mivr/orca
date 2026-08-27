@@ -43,6 +43,7 @@ describe('ensure-native-runtime', () => {
       expect(result.status, result.stderr).toBe(0)
       const log = readFileSync(logPath, 'utf8')
       expect(log).toContain('pnpm rebuild node-pty\n')
+      expect(log).toContain('npm_config_build_from_source=true')
       expect(log.split('\n').filter((line) => line.startsWith('node-pty child '))).toEqual([
         expect.stringMatching(/^node-pty child (?:conpty|pty) marker=false$/),
         expect.stringMatching(/^node-pty child (?:conpty|pty) marker=true$/)
@@ -218,7 +219,14 @@ exports.loadNativeModule = function loadNativeModule(nativeName) {
   const dir = ${JSON.stringify(nativeDir)} ??
     (rebuilt ? '../build/Release/' : '../prebuilds/' + process.platform + '-' + process.arch + '/')
   appendFileSync(process.env.ORCA_NATIVE_TEST_LOG, \`node-pty load \${nativeName} dir=\${dir}\\n\`)
-  return { dir, module: {} }
+  return {
+    dir,
+    module: {
+      listJobProcessIds: () => [],
+      terminateJob: () => true,
+      assignCurrentProcessToJob: () => true
+    }
+  }
 }
 `
   )
@@ -235,6 +243,9 @@ function writeFakeWindowsRegistry(projectDir) {
     join(registryDir, 'index.js'),
     'exports.HK = { CU: 0x80000001 }; exports.getRegistryKey = () => ({})\n'
   )
+  const processTreeDir = join(projectDir, 'node_modules', '@vscode', 'windows-process-tree')
+  mkdirSync(processTreeDir, { recursive: true })
+  writeFileSync(join(processTreeDir, 'index.js'), 'module.exports = {}\n')
 }
 
 function writeNodePtyPatchFile(projectDir) {
@@ -245,6 +256,13 @@ function writeNodePtyPatchFile(projectDir) {
 function writePatchedNodePtyBuildArtifacts(projectDir) {
   const buildDir = join(projectDir, 'node_modules', 'node-pty', 'build', 'Release')
   mkdirSync(buildDir, { recursive: true })
+  if (process.platform === 'win32') {
+    writeFileSync(join(buildDir, 'conpty.node'), '')
+    mkdirSync(join(buildDir, 'conpty'), { recursive: true })
+    writeFileSync(join(buildDir, 'conpty', 'conpty.dll'), '')
+    writeFileSync(join(buildDir, 'conpty', 'OpenConsole.exe'), '')
+    return
+  }
   writeFileSync(join(buildDir, 'pty.node'), '')
   if (process.platform === 'darwin') {
     writeFileSync(join(buildDir, 'spawn-helper'), '')
@@ -260,6 +278,10 @@ function writeFakePnpm(binDir) {
 const { appendFileSync, writeFileSync } = require('node:fs')
 
 appendFileSync(process.env.ORCA_NATIVE_TEST_LOG, \`pnpm \${process.argv.slice(2).join(' ')}\\n\`)
+appendFileSync(
+  process.env.ORCA_NATIVE_TEST_LOG,
+  \`npm_config_build_from_source=\${process.env.npm_config_build_from_source || ''}\\n\`
+)
 writeFileSync(process.env.ORCA_NATIVE_TEST_MARKER, 'rebuilt')
 `
   )
