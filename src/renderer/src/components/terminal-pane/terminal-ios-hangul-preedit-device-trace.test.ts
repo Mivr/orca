@@ -1,7 +1,22 @@
 // @vitest-environment happy-dom
 /**
- * The reporter's own string, `한글깨짐`, keystroke for keystroke as an iPad
- * produces it (#13345). Two properties are pinned here:
+ * `gksrmfRownla` → `한글깨쥠`, replayed from a capture taken on an iPad running
+ * iPadOS 26 with a hardware Korean 2-set keyboard (#13345). The recording is
+ * the fixture: an earlier round of this work passed against a hand-written
+ * shape the device never produces, and shipped a bug the device shows in event
+ * 23 of this file.
+ *
+ * What the device does that no reconstruction guessed — batchim migration:
+ *
+ *   keydown 'ㅈ' → deleteContentBackward, insertText '깾'  value '한글깾'
+ *   keydown 'ㅜ' → deleteContentBackward, insertText '깨주' value '한글깨주'
+ *
+ * The `ㅈ` first attaches to `깨` as a final consonant, making a different
+ * codepoint entirely, and only migrates forward once `ㅜ` says it starts the
+ * next syllable. A syllable is not final until the following syllable's vowel
+ * decides, so `깨` must not be committed when the `ㅈ` arrives.
+ *
+ * Two properties are pinned here:
  *
  * - `깨` opens on `ㄲ`, a Shift-typed double consonant. Orca's own Shift rule
  *   (`xterm-bypass-policy.ts`) already hides those keydowns from xterm, so a fix
@@ -15,39 +30,33 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  deviceTraceKeystrokes,
   disposeOpenTerminals,
   dispatchKey,
+  loadIosDeviceTrace,
   openIosTerminal,
   pretendIosWeb,
+  replayIosDeviceTrace,
   typeJamo,
+  typePrintable,
   type IosHangulRig
 } from './terminal-ios-hangul-preedit-fixture'
 
-/** The 18 field writes the device produces for `한글깨짐`, in order. */
-const HANGUL_KKAEJIM_TRACE = [
-  { key: 'ㅎ', written: 'ㅎ', replaces: false },
-  { key: 'ㅏ', written: '하', replaces: true },
-  { key: 'ㄴ', written: '한', replaces: true },
-  { key: 'ㄱ', written: 'ㄱ', replaces: false },
-  { key: 'ㅡ', written: '그', replaces: true },
-  { key: 'ㄹ', written: '글', replaces: true },
-  { key: 'ㄲ', written: 'ㄲ', replaces: false, shiftKey: true },
-  { key: 'ㅐ', written: '깨', replaces: true },
-  { key: 'ㅈ', written: 'ㅈ', replaces: false },
-  { key: 'ㅣ', written: '지', replaces: true },
-  { key: 'ㅁ', written: '짐', replaces: true }
-] as const
+const TRACE = loadIosDeviceTrace('ipados-hardware-2set-hangul-batchim-migration-trace.json')
+const KEYSTROKES = deviceTraceKeystrokes(TRACE)
 
-async function replayTrace(rig: IosHangulRig): Promise<void> {
-  for (const step of HANGUL_KKAEJIM_TRACE) {
-    await typeJamo(rig, step.key, step.written, {
-      replaces: step.replaces,
-      shiftKey: 'shiftKey' in step ? step.shiftKey : false
-    })
+function pretendRecordedDevice(): void {
+  pretendIosWeb(TRACE.maxTouchPoints, TRACE.userAgent)
+}
+
+/** The capture as keystrokes, which adds the keypress the recorder did not log. */
+async function replayKeystrokes(rig: IosHangulRig, upTo = KEYSTROKES.length): Promise<void> {
+  for (const step of KEYSTROKES.slice(0, upTo)) {
+    await typePrintable(rig, step)
   }
 }
 
-describe('the recorded iPad device trace for 한글깨짐', () => {
+describe('the recorded iPad device trace for 한글깨쥠', () => {
   beforeEach(() => {
     // happy-dom has no 2d context, which the DOM renderer's WidthCache requires.
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
@@ -61,37 +70,78 @@ describe('the recorded iPad device trace for 한글깨짐', () => {
     document.body.replaceChildren()
   })
 
-  it('reaches the PTY as 한글깨짐', async () => {
-    pretendIosWeb()
-    const rig = openIosTerminal()
-    await replayTrace(rig)
-    dispatchKey(rig, 'keydown', { key: 'Enter', code: 'Enter', keyCode: 13 })
+  describe('replayed event for event, exactly as recorded', () => {
+    it('commits per syllable instead of hoarding the batchim migration', async () => {
+      pretendRecordedDevice()
+      const rig = openIosTerminal()
+      const drift = await replayIosDeviceTrace(rig, TRACE)
 
-    expect(rig.emitted.join('')).toBe('한글깨짐\r')
+      // The device build reached the wire as ['한', '글', '깨쥠'] — correct text,
+      // but everything from `깨` on arrived in one chunk at blur, because the
+      // hold stalled the moment `깨` became `깾`.
+      expect(TRACE.observedSent).toEqual(['한', '글', '깨쥠'])
+      expect(rig.emitted).toEqual(['한', '글', '깨'])
+      expect(rig.preedit.heldText()).toBe('쥠')
+      expect(drift).toEqual([])
+    })
+
+    it('holds 깨 while the ㅈ could still belong to it', async () => {
+      pretendRecordedDevice()
+      const rig = openIosTerminal()
+      // Up to and including the `깾` write, which is where the device build stopped.
+      await replayIosDeviceTrace(rig, { ...TRACE, events: TRACE.events.slice(0, 25) })
+
+      expect(rig.emitted).toEqual(['한', '글'])
+      expect(rig.preedit.heldText()).toBe('깾')
+    })
+
+    it('reaches the PTY as 한글깨쥠', async () => {
+      pretendRecordedDevice()
+      const rig = openIosTerminal()
+      await replayIosDeviceTrace(rig, TRACE)
+      dispatchKey(rig, 'keydown', { key: 'Enter', code: 'Enter', keyCode: 13 })
+
+      expect(rig.emitted.join('')).toBe(`${TRACE.expected}\r`)
+    })
+
+    it('puts no DEL or backspace byte on the wire', async () => {
+      pretendRecordedDevice()
+      const rig = openIosTerminal()
+      await replayIosDeviceTrace(rig, TRACE)
+      dispatchKey(rig, 'keydown', { key: 'Enter', code: 'Enter', keyCode: 13 })
+
+      const wire = rig.emitted.join('')
+      expect(wire).not.toContain('\x7f')
+      expect(wire).not.toContain('\b')
+      // One write per syllable plus the Enter: no retraction, and no per-edit churn.
+      expect(rig.emitted).toHaveLength(5)
+    })
   })
 
-  it('writes once per syllable, so the 18 field edits are four PTY writes', async () => {
-    pretendIosWeb()
-    const rig = openIosTerminal()
-    await replayTrace(rig)
+  describe('replayed as keystrokes, with the keypress a browser also fires', () => {
+    it('sends the composed syllables and never the raw jamo', async () => {
+      pretendRecordedDevice()
+      const rig = openIosTerminal()
+      await replayKeystrokes(rig)
+      dispatchKey(rig, 'keydown', { key: 'Enter', code: 'Enter', keyCode: 13 })
 
-    expect(rig.emitted).toEqual(['한', '글', '깨'])
-    expect(rig.preedit.heldText()).toBe('짐')
-  })
+      expect(rig.emitted.join('')).toBe(`${TRACE.expected}\r`)
+      expect(rig.emitted).toEqual(['한', '글', '깨', '쥠', '\r'])
+    })
 
-  it('puts no DEL or backspace byte on the wire', async () => {
-    pretendIosWeb()
-    const rig = openIosTerminal()
-    await replayTrace(rig)
-    dispatchKey(rig, 'keydown', { key: 'Enter', code: 'Enter', keyCode: 13 })
+    it('composes a mid-word Shift+jamo after a committed syllable', async () => {
+      pretendRecordedDevice()
+      const rig = openIosTerminal()
+      // Through `깨`, the eighth keystroke, whose initial is a Shift-typed ㄲ.
+      await replayKeystrokes(rig, 8)
+      dispatchKey(rig, 'keydown', { key: 'Enter', code: 'Enter', keyCode: 13 })
 
-    const wire = rig.emitted.join('')
-    expect(wire).not.toContain('\x7f')
-    expect(wire).not.toContain('\b')
+      expect(rig.emitted.join('')).toBe('한글깨\r')
+    })
   })
 
   it('composes a syllable-initial Shift+jamo with nothing before it', async () => {
-    pretendIosWeb()
+    pretendRecordedDevice()
     const rig = openIosTerminal()
     await typeJamo(rig, 'ㄲ', 'ㄲ', { replaces: false, shiftKey: true })
     await typeJamo(rig, 'ㅐ', '깨', { replaces: true })
@@ -100,17 +150,20 @@ describe('the recorded iPad device trace for 한글깨짐', () => {
     expect(rig.emitted).toEqual(['깨', '\r'])
   })
 
-  it('composes a mid-word Shift+jamo after a committed syllable', async () => {
-    pretendIosWeb()
+  it('migrates a batchim with nothing committed before it', async () => {
+    // The same rewrite as the trace's `깨` → `깾` → `깨주`, but opening the line:
+    // the settled prefix is empty, so nothing can be released early by accident.
+    pretendRecordedDevice()
     const rig = openIosTerminal()
-    for (const step of HANGUL_KKAEJIM_TRACE.slice(0, 8)) {
-      await typeJamo(rig, step.key, step.written, {
-        replaces: step.replaces,
-        shiftKey: 'shiftKey' in step ? step.shiftKey : false
-      })
-    }
-    dispatchKey(rig, 'keydown', { key: 'Enter', code: 'Enter', keyCode: 13 })
+    await typeJamo(rig, 'ㄲ', 'ㄲ', { replaces: false, shiftKey: true })
+    await typeJamo(rig, 'ㅐ', '깨', { replaces: true })
+    await typeJamo(rig, 'ㅈ', '깾', { replaces: true })
+    expect(rig.emitted).toEqual([])
 
-    expect(rig.emitted.join('')).toBe('한글깨\r')
+    await typeJamo(rig, 'ㅜ', '깨주', { replaces: true })
+    await typeJamo(rig, 'ㅣ', '쥐', { replaces: true })
+
+    expect(rig.emitted).toEqual(['깨'])
+    expect(rig.preedit.heldText()).toBe('쥐')
   })
 })

@@ -257,6 +257,21 @@ describe('iPadOS Hangul typed as bare keydowns', () => {
     expect(rig.preedit.heldText()).toBe('가나')
   })
 
+  it('commits the held syllable when the field is rewritten out from under it', async () => {
+    pretendIosWeb()
+    const rig = openIosTerminal()
+    await typeHangeul(rig)
+
+    // Not the IME rewriting its own syllable: the text the hold measures against
+    // is gone entirely, so `글` is still owed to the PTY rather than droppable.
+    rig.textarea.value = 'ls'
+    dispatchInput(rig, 'insertText', 's')
+    await nextEventLoop()
+
+    expect(rig.emitted).toEqual(['한', '글'])
+    expect(rig.preedit.heldText()).toBe('')
+  })
+
   it('sends a jamo composed inside a session once, not twice', async () => {
     // The iPad on-screen keyboard does run a composition for Hangul, unlike the
     // hardware one. A hold opened over that session would commit the raw jamo

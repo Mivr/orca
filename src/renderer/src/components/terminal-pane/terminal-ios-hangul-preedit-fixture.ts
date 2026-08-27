@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { Terminal } from '@xterm/xterm'
 import { isCurrentPlatformIosWeb } from '../../lib/ios-web-platform'
 import { installTerminalImeCompositionTracker } from './terminal-ime-composition-tracker'
@@ -228,4 +230,112 @@ export async function typeHangeul(rig: IosHangulRig): Promise<void> {
   await typeJamo(rig, 'ㄱ', 'ㄱ', { replaces: false })
   await typeJamo(rig, 'ㅡ', '그', { replaces: true })
   await typeJamo(rig, 'ㄹ', '글', { replaces: true })
+}
+
+/** One DOM event exactly as the on-device recorder saw it. */
+export type IosDeviceTraceEvent = {
+  type: 'keydown' | 'input'
+  key: string
+  keyCode: number | null
+  inputType: string | null
+  data: string
+  /** `textarea.value` at the moment the event fired. */
+  value: string
+}
+
+export type IosDeviceTrace = {
+  source: string
+  userAgent: string
+  maxTouchPoints: number
+  typed: string
+  expected: string
+  /** What the device build actually put on the wire, bug included. */
+  observedSent: string[]
+  events: IosDeviceTraceEvent[]
+}
+
+export function loadIosDeviceTrace(fileName: string): IosDeviceTrace {
+  const path = resolve(
+    process.cwd(),
+    'src/renderer/src/components/terminal-pane/__fixtures__',
+    fileName
+  )
+  return JSON.parse(readFileSync(path, 'utf8')) as IosDeviceTrace
+}
+
+/** A recorded keydown whose field value no longer matches on replay. */
+export type FieldDrift = { index: number; recorded: string; actual: string }
+
+/**
+ * Replays a capture verbatim — the recorded events only, with the field set to
+ * the value the device held at each one. No keypress: the recorder captured
+ * keydown and input, so the browser's keypress is not replayed here and the
+ * hand-driven suites keep that coverage.
+ *
+ * Returns every keydown at which the field had drifted from the recording,
+ * which is how the controller having disturbed the IME's own state shows up.
+ */
+export async function replayIosDeviceTrace(
+  rig: IosHangulRig,
+  trace: IosDeviceTrace
+): Promise<FieldDrift[]> {
+  const drift: FieldDrift[] = []
+  for (const [index, event] of trace.events.entries()) {
+    if (event.type === 'keydown') {
+      if (rig.textarea.value !== event.value) {
+        drift.push({ index, recorded: event.value, actual: rig.textarea.value })
+      }
+      dispatchKey(rig, 'keydown', { key: event.key, keyCode: event.keyCode ?? 0 })
+    } else {
+      rig.textarea.value = event.value
+      dispatchInput(rig, event.inputType ?? 'insertText', event.data || null)
+    }
+    await nextEventLoop()
+  }
+  return drift
+}
+
+/**
+ * The same capture as keystrokes, so the shared `typeJamo` path replays it with
+ * the keypress a browser fires. `replaces` is read off the recording: a jamo
+ * that first attaches to the previous syllable arrives as delete-then-insert.
+ */
+export type DeviceTraceKeystroke = {
+  key: string
+  keyCode: number
+  written: string
+  replaces: boolean
+  shiftKey: boolean
+}
+
+export function deviceTraceKeystrokes(trace: IosDeviceTrace): DeviceTraceKeystroke[] {
+  const steps: DeviceTraceKeystroke[] = []
+  let shiftKey = false
+  for (const event of trace.events) {
+    if (event.type === 'keydown') {
+      if (event.key === 'Shift') {
+        shiftKey = true
+        continue
+      }
+      steps.push({
+        key: event.key,
+        keyCode: event.keyCode ?? 0,
+        written: '',
+        replaces: false,
+        shiftKey
+      })
+      shiftKey = false
+      continue
+    }
+    const step = steps.at(-1)
+    if (!step) {
+      throw new Error('trace opens with an input event, which no keystroke owns')
+    }
+    if (event.inputType?.startsWith('delete')) {
+      step.replaces = true
+    } else {
+      step.written = event.data
+    }
+  }
+  return steps
 }

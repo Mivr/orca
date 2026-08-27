@@ -20,7 +20,8 @@ import { isHangulJamoKeyText } from './hangul-jamo-key'
 type OpenPreedit = {
   /** Field text preceding the syllable; everything after it is uncommitted. */
   baseValue: string
-  /** The syllable being held: shown, not sent. */
+  /** Held back: shown, not sent. The open syllable, plus the one before it
+   *  while a migrating batchim could still pull back into it. */
   heldText: string
   /** The jamo that opened the hold, owed to the PTY if the IME never writes. */
   openKey: string
@@ -29,7 +30,7 @@ type OpenPreedit = {
 }
 
 export type TerminalIosHangulPreedit = IDisposable & {
-  /** The syllable currently held back from the PTY, or '' when none is. */
+  /** The text currently held back from the PTY, or '' when none is. */
   heldText: () => string
 }
 
@@ -70,6 +71,35 @@ function isJamoKey(event: KeyboardEvent): boolean {
 
 function isDeletion(event: Event): boolean {
   return event instanceof InputEvent && event.inputType.startsWith('delete')
+}
+
+/** One field rewrite, located: where the IME began and what it put there. */
+type FieldEdit = {
+  /** Index of the first character it changed. */
+  start: number
+  /** What it wrote from `start` on; empty when the rewrite wrote nothing. */
+  text: string
+}
+
+/**
+ * Diffs two field states, taking the common prefix as where the IME began.
+ *
+ * Why not "did the tail grow past what is held": Korean batchim migration
+ * rewrites in place. `깨` + `ㅈ` becomes `깾` — a different codepoint, not an
+ * extension — and only becomes `깨주` once the next vowel decides where the `ㅈ`
+ * belongs. Any monotonic-growth assumption stalls there.
+ *
+ * No common-suffix half, unlike the usual textarea-IME diff: the IME edits at
+ * the caret and the caret is the end of the helper textarea, so there is never
+ * an untouched tail to discount.
+ */
+function diffFieldEdit(prev: string, next: string): FieldEdit {
+  const limit = Math.min(prev.length, next.length)
+  let start = 0
+  while (start < limit && prev[start] === next[start]) {
+    start += 1
+  }
+  return { start, text: next.slice(start) }
 }
 
 /** True for input the browser attributes to a composition session, whichever
@@ -127,9 +157,13 @@ export function installTerminalIosHangulPreedit(
   }
 
   /**
-   * Re-derives the hold from the field. The IME replaces the syllable it is
-   * still building and only appends once that syllable is final, so a tail that
-   * grew past what is held is the one signal that releases it.
+   * Re-derives the hold from the field, releasing whatever the IME has stopped
+   * rewriting.
+   *
+   * A syllable is settled once the IME's own edit point has moved past it: up
+   * to that index the batchim question — does this consonant end this syllable
+   * or start the next — is already answered, and nothing there can change
+   * without a keystroke that ends the hold anyway.
    */
   const sync = (textarea: HTMLTextAreaElement): void => {
     const open = preedit
@@ -143,25 +177,23 @@ export function installTerminalIosHangulPreedit(
       commit()
       return
     }
-    let tail = value.slice(open.baseValue.length)
+    const tail = value.slice(open.baseValue.length)
     if (tail.length === 0) {
       // Backspace erased the syllable's last jamo. None of it was sent, so
       // nothing needs undoing — and the next Backspace is the PTY's.
       close()
       return
     }
-    if (
-      open.heldText.length > 0 &&
-      tail.length > open.heldText.length &&
-      tail.startsWith(open.heldText)
-    ) {
-      const settled = open.heldText
+    const edit = diffFieldEdit(open.heldText, tail)
+    // An edit that wrote nothing settles nothing: a rewrite landing on the same
+    // text, or a Backspace shortening the tail, is not the IME deciding.
+    if (edit.start > 0 && edit.text.length > 0) {
+      const settled = tail.slice(0, edit.start)
       open.baseValue += settled
-      tail = tail.slice(settled.length)
       options.sendInput(settled)
     }
-    open.heldText = tail
-    render(tail)
+    open.heldText = value.slice(open.baseValue.length)
+    render(open.heldText)
   }
 
   const handleKeyDown = (event: Event): void => {
