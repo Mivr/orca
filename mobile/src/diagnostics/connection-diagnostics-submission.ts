@@ -24,7 +24,7 @@ export async function submitConnectionDiagnostics(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         feedback: report,
-        submissionType: 'feedback',
+        submissionType: 'connection_diagnostics',
         githubLogin: null,
         githubEmail: null,
         appVersion: submission.appVersion,
