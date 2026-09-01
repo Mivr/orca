@@ -69,6 +69,7 @@ export const StatusBarItem = z.enum([
   'kimi',
   'minimax',
   'grok',
+  'cursor',
   'ssh',
   'resource-usage',
   'ports'
