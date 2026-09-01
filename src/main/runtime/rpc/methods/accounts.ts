@@ -4,6 +4,7 @@ import {
   AddClaudeFromConfigDirParams,
   AddCodexFromHomeParams,
   ConsumeCodexResetCreditParams,
+  ConsumeGrokResetCreditParams,
   ListAccountsParams,
   RemoveAccountParams,
   SelectAccountParams,
@@ -62,6 +63,12 @@ export const ACCOUNT_METHODS = [
     params: ConsumeCodexResetCreditParams,
     handler: async (params, { runtime }) =>
       runtime.consumeCodexRateLimitResetCredit(params.idempotencyKey, params.expectedScope)
+  }),
+  defineMethod({
+    name: 'accounts.consumeGrokResetCredit',
+    params: ConsumeGrokResetCreditParams,
+    handler: async (params, { runtime }) =>
+      runtime.consumeGrokRateLimitResetCredit(params.idempotencyKey)
   }),
   defineMethod({
     name: 'accounts.removeClaude',
