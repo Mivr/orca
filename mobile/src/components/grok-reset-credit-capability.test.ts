@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { RpcClient } from '../transport/rpc-client'
 
 const probe = vi.hoisted(() => ({ start: vi.fn() }))
-vi.mock('../transport/runtime-capability-probe', () => ({
+vi.mock('../transport/runtime-status-probe', () => ({
   startRuntimeCapabilityProbe: probe.start
 }))
 

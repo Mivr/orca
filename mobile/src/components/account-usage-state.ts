@@ -27,7 +27,7 @@ export {
 } from './accounts-snapshot'
 
 export type ProviderKey = 'claude' | 'codex'
-export type HostUsageProviderKey = 'grok'
+export type HostUsageProviderKey = 'grok' | 'cursor'
 
 export type UsageBarState = {
   usedPercent: number | null
@@ -117,6 +117,30 @@ export function getWindowResetLabel(
     return null
   }
   return formatResetCountdown(resetsAt - now)
+}
+
+export function getBucketUsageBarState(
+  limits: ProviderRateLimits | null,
+  bucketName: string,
+  isFetchingOverride?: boolean
+): UsageBarState {
+  const bucket = limits?.buckets?.find((entry) => entry.name === bucketName) ?? null
+  const fetching =
+    isFetchingOverride ?? (limits?.status === 'fetching' || limits?.status === 'idle')
+  return {
+    usedPercent: bucket?.usedPercent ?? null,
+    unavailable: bucket == null && !fetching,
+    loading: fetching && bucket == null
+  }
+}
+
+export function getBucketResetLabel(
+  limits: ProviderRateLimits | null,
+  bucketName: string,
+  now: number
+): string | null {
+  const resetsAt = limits?.buckets?.find((entry) => entry.name === bucketName)?.resetsAt
+  return resetsAt == null ? null : formatResetCountdown(resetsAt - now)
 }
 
 // Why: the usage UI must render for the system-default login, not only for

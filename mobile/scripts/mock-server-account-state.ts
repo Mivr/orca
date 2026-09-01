@@ -3,6 +3,7 @@ import {
   type CodexResetCreditExpectedScope
 } from '../../src/shared/codex-reset-credit-scope'
 import { createMockGrokRateLimits, resetMockGrokState } from './mock-server-grok-reset-state'
+import { createMockCursorRateLimits } from './mock-server-cursor-state'
 
 export { consumeMockGrokResetCredit } from './mock-server-grok-reset-state'
 
@@ -231,6 +232,7 @@ export function createMockAccountsSnapshot() {
         status: 'ok' as const
       },
       codex: codexLimits,
+      cursor: createMockCursorRateLimits(fixtureStartedAt),
       grok: createMockGrokRateLimits(),
       claudeTarget: { runtime: 'host' as const, wslDistro: null },
       codexTarget: { runtime: 'host' as const, wslDistro: null },

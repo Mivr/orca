@@ -20,6 +20,13 @@ const RateLimitResetCreditSchema = z
   })
   .passthrough()
 
+const RateLimitBucketSchema = RateLimitWindowSchema.omit({ windowMinutes: true })
+  .extend({
+    name: z.string().min(1),
+    windowMinutes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional()
+  })
+  .passthrough()
+
 const RateLimitResetCreditsSchema = z
   .object({
     availableCount: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
@@ -31,6 +38,8 @@ const RateLimitResetCreditsSchema = z
 
 const UsageRateLimitMetadataSchema = z
   .object({
+    accountEmail: z.string().min(1).optional(),
+    subscriptionStatus: z.string().min(1).optional(),
     authProvenance: z.string().min(1).optional()
   })
   .passthrough()
@@ -45,16 +54,16 @@ export const ProviderRateLimitsSchema = z
       'kimi',
       'minimax',
       'grok',
-      'antigravity'
+      'antigravity',
+      'cursor'
     ]),
     session: RateLimitWindowSchema.nullable(),
     weekly: RateLimitWindowSchema.nullable(),
     fableWeekly: RateLimitWindowSchema.nullable().optional(),
     monthly: RateLimitWindowSchema.nullable().optional(),
-    buckets: z
-      .array(RateLimitWindowSchema.extend({ name: z.string().min(1) }).passthrough())
-      .optional(),
+    buckets: z.array(RateLimitBucketSchema).optional(),
     rateLimitResetCredits: RateLimitResetCreditsSchema.nullable().optional(),
+    planType: z.string().min(1).nullable().optional(),
     usageMetadata: UsageRateLimitMetadataSchema.optional(),
     updatedAt: TimestampSchema,
     error: z.string().nullable(),
@@ -181,6 +190,9 @@ export const AccountsSnapshotSchema = z
       .object({
         claude: ProviderRateLimitsSchema.nullable(),
         codex: ProviderRateLimitsSchema.nullable(),
+        // Why: older hosts omit Cursor entirely; keep the field optional so
+        // mixed-version clients continue to decode their snapshots.
+        cursor: ProviderRateLimitsSchema.nullable().optional(),
         // Why: old hosts omit Grok; optional decoding keeps mixed versions compatible.
         grok: ProviderRateLimitsSchema.nullable().optional(),
         // Why: protocol-compatible hosts from before runtime targeting omit
@@ -206,6 +218,13 @@ export const AccountsSnapshotSchema = z
         code: 'custom',
         message: 'Codex limits use the wrong provider identity',
         path: ['rateLimits', 'codex', 'provider']
+      })
+    }
+    if (snapshot.rateLimits.cursor && snapshot.rateLimits.cursor.provider !== 'cursor') {
+      context.addIssue({
+        code: 'custom',
+        message: 'Cursor limits use the wrong provider identity',
+        path: ['rateLimits', 'cursor', 'provider']
       })
     }
     if (snapshot.rateLimits.grok && snapshot.rateLimits.grok.provider !== 'grok') {
