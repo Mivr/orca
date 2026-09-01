@@ -21,6 +21,7 @@ import {
   type GrokBillingConfig,
   type GrokBillingResponse
 } from './grok-billing-mappers'
+import { withRateLimitRequestTimeout } from './rate-limit-request-timeout'
 
 // Why: billing URL and headers must match Grok CLI or xAI rejects the request.
 const GROK_CLI_PROXY_BASE =
@@ -71,9 +72,7 @@ async function fetchBillingData(
   session: GrokAuthSession,
   signal?: AbortSignal
 ): Promise<GrokBillingFetchOutcome> {
-  const requestSignal = signal
-    ? AbortSignal.any([signal, AbortSignal.timeout(API_TIMEOUT_MS)])
-    : AbortSignal.timeout(API_TIMEOUT_MS)
+  const requestSignal = withRateLimitRequestTimeout(signal, API_TIMEOUT_MS)
   const res = await net.fetch(url, {
     headers: grokRequestHeaders(session),
     signal: requestSignal
