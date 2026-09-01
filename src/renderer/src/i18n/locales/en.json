@@ -8706,6 +8706,16 @@
           "7aa456a460": "Register `orca-ide` in ~/.local/bin inside WSL.",
           "0307677bb9": "Checking WSL CLI registration..."
         },
+        "CursorAccountsSection": {
+          "dd3e96043c": "Cursor",
+          "f81b44c027": "Shows Cursor Models, Other Models, and Grok Bot usage from the Cursor desktop or cursor-agent login on this machine. Orca does not refresh that session.",
+          "cffcf53d2c": "Cursor CLI docs",
+          "227335c599": "Signed in",
+          "032e4ab844": "Not signed in — run Cursor or cursor-agent login on this computer",
+          "0035d7210b": "Refresh usage",
+          "6c4baffae9": "Live percent used for this Cursor pool. Caps are not hardcoded.",
+          "6e1fa26404": "Resets {{when}}"
+        },
         "accounts": {
           "search": {
             "86edc96bc9": "status bar",
@@ -8759,7 +8769,10 @@
             "d2c6a0e8f1": "grok",
             "c1b5f9d7e0": "xai",
             "b0a4e8c6d9": "oauth",
-            "a9f3d7b5c8": "login"
+            "a9f3d7b5c8": "login",
+            "f0d1b8ed98": "Cursor Usage",
+            "5311965b9e": "Read-only Cursor desktop and cursor-agent login for Cursor Models, Other Models, and Grok Bot usage.",
+            "ae41149765": "cursor"
           }
         },
         "advanced": {
