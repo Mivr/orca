@@ -10,6 +10,8 @@ import {
   type GrokAuthReadResult,
   type GrokAuthSession
 } from './grok-auth'
+import { supplementGrokRateLimitResetCredits } from './grok-reset-credit-client'
+import type { RateLimitResetCredits } from './codex-reset-credit-client'
 
 // Why: billing URL and headers must match Grok CLI or xAI rejects the request.
 const GROK_CLI_PROXY_BASE =
@@ -240,7 +242,11 @@ async function fetchMonthlyUsageFallback(
 
 // Why: Orca never runs grok login; it only reads the session file the CLI updates.
 export async function fetchGrokRateLimits(
-  options: { signal?: AbortSignal; authReadResult?: GrokAuthReadResult } = {}
+  options: {
+    signal?: AbortSignal
+    authReadResult?: GrokAuthReadResult
+    previousRateLimitResetCredits?: RateLimitResetCredits
+  } = {}
 ): Promise<ProviderRateLimits> {
   const readResult = options.authReadResult ?? readGrokAuthSession()
   if (readResult.status === 'missing') {
@@ -275,7 +281,14 @@ export async function fetchGrokRateLimits(
     }
     const weekly = mapWeeklyCredits(config)
     if (weekly) {
-      return billingUsageResult({ weekly }, config, session)
+      return await supplementGrokRateLimitResetCredits(
+        billingUsageResult({ weekly }, config, session),
+        session,
+        {
+          signal: options.signal,
+          previousRateLimitResetCredits: options.previousRateLimitResetCredits
+        }
+      )
     }
     // Why: some unified-billing accounts expose only a monthly included budget;
     // their credits view omits creditUsagePercent, so read the default view.
@@ -284,7 +297,14 @@ export async function fetchGrokRateLimits(
       return fallback.result
     }
     if (fallback.window) {
-      return billingUsageResult({ monthly: fallback.window }, config, session)
+      return await supplementGrokRateLimitResetCredits(
+        billingUsageResult({ monthly: fallback.window }, config, session),
+        session,
+        {
+          signal: options.signal,
+          previousRateLimitResetCredits: options.previousRateLimitResetCredits
+        }
+      )
     }
     return result('unavailable', 'Grok billing response did not include credit usage')
   } catch (err) {
