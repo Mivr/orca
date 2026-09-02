@@ -122,7 +122,8 @@ export function billingUsageResult(
     status: 'ok',
     usageMetadata: {
       source: 'oauth',
-      authProvenance: tier ? `${authLabel} (${tier})` : authLabel
+      authProvenance: tier ? `${authLabel} (${tier})` : authLabel,
+      authAccountId: session.userId?.trim() || session.email?.trim().toLowerCase() || undefined
     }
   }
 }
