@@ -1,5 +1,9 @@
 import type { StateCreator } from 'zustand'
-import type { RateLimitRuntimeTarget, RateLimitState } from '../../../../shared/rate-limit-types'
+import type {
+  GrokRateLimitResetOutcome,
+  RateLimitRuntimeTarget,
+  RateLimitState
+} from '../../../../shared/rate-limit-types'
 import type { AppState } from '../types'
 
 export type RateLimitSlice = {
@@ -10,7 +14,7 @@ export type RateLimitSlice = {
   refreshClaudeRateLimitsForTarget: (target: RateLimitRuntimeTarget) => Promise<void>
   refreshCodexRateLimitsForTarget: (target: RateLimitRuntimeTarget) => Promise<void>
   consumeCodexRateLimitResetCredit: () => Promise<void>
-  consumeGrokRateLimitResetCredit: () => Promise<void>
+  consumeGrokRateLimitResetCredit: () => Promise<GrokRateLimitResetOutcome>
   fetchInactiveClaudeAccountUsage: () => Promise<void>
   fetchInactiveCodexAccountUsage: () => Promise<void>
   setRateLimitsFromPush: (state: RateLimitState) => void
@@ -135,6 +139,7 @@ export const createRateLimitSlice: StateCreator<AppState, [], [], RateLimitSlice
     try {
       const result = await window.api.rateLimits.consumeGrokResetCredit()
       set({ rateLimits: result.state })
+      return result.outcome
     } catch (error) {
       console.error('Failed to consume Grok usage-limit reset:', error)
       throw error
