@@ -16,25 +16,27 @@ const storeMocks = vi.hoisted(() => ({
   recordFeatureInteraction: vi.fn()
 }))
 
+const grokUsage = {
+  provider: 'grok' as const,
+  session: null,
+  weekly: {
+    usedPercent: 42,
+    windowMinutes: 10_080,
+    resetsAt: null,
+    resetDescription: 'Tue'
+  },
+  rateLimitResetCredits: {
+    availableCount: 2,
+    nextExpiresAt: null as number | null
+  },
+  updatedAt: 1,
+  error: null,
+  status: 'ok' as const
+}
+
 const mockStoreState = {
   rateLimits: createEmptyRateLimitState({
-    grok: {
-      provider: 'grok',
-      session: null,
-      weekly: {
-        usedPercent: 42,
-        windowMinutes: 10_080,
-        resetsAt: null,
-        resetDescription: 'Tue'
-      },
-      rateLimitResetCredits: {
-        availableCount: 2,
-        nextExpiresAt: null as number | null
-      },
-      updatedAt: 1,
-      error: null,
-      status: 'ok'
-    },
+    grok: grokUsage,
     grokAuthConfigured: true
   }),
   refreshGrokRateLimits: storeMocks.refreshGrokRateLimits,
@@ -74,7 +76,7 @@ import { GrokUsagePane } from './GrokUsagePane'
 describe('GrokUsagePane', () => {
   beforeEach(() => {
     storeMocks.refreshGrokRateLimits.mockResolvedValue(undefined)
-    mockStoreState.rateLimits.grok.rateLimitResetCredits.nextExpiresAt = null
+    grokUsage.rateLimitResetCredits.nextExpiresAt = null
   })
 
   afterEach(() => {
@@ -104,8 +106,7 @@ describe('GrokUsagePane', () => {
   it('shows the soonest reset-token expiry beside the available count', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-02T12:00:00Z'))
-    mockStoreState.rateLimits.grok.rateLimitResetCredits.nextExpiresAt =
-      Date.now() + 2 * 60 * 60_000
+    grokUsage.rateLimitResetCredits.nextExpiresAt = Date.now() + 2 * 60 * 60_000
 
     render(<GrokUsagePane />)
 
