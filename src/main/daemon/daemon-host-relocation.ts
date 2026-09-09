@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import {
+  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -98,26 +99,27 @@ function resolveEntrySourcePath(resourcesPath: string): string {
 }
 
 /**
- * Whether this process is a packaged ELECTRON app on win32 — the only shape relocation
- * addresses, because what it escapes is the NSIS updater's kill zone.
+ * Whether this process is a packaged ELECTRON app on win32 or linux — the shapes relocation
+ * addresses: on win32 escaping the NSIS updater's kill zone; on linux escaping the ephemeral
+ * AppImage FUSE mount so the daemon outlives server restarts.
  *
  * Why asar and not isPackaged alone: orcad answers isPackaged() true (it is a shipped build,
  * not a dev checkout) while having no asar, no resourcesPath and no NSIS installer. Asking
  * whether the app root is an asar archive is the same honesty fix the watcher path uses, and
  * it keeps a Node host from staging a copy of an Electron tree it does not have.
  */
-function isPackagedElectronWin32(): boolean {
+function isPackagedElectronRelocationSupported(): boolean {
   const environment = getAppEnvironment()
   return (
-    process.platform === 'win32' &&
+    (process.platform === 'win32' || process.platform === 'linux') &&
     environment.isPackaged() &&
     environment.getAppPath().includes('app.asar')
   )
 }
 
-// Relocation inputs from the live packaged process, or null when it doesn't apply (non-win32, dev, or missing resourcesPath).
+// Relocation inputs from the live packaged process, or null when it doesn't apply (unsupported platform, dev, or missing resourcesPath).
 function collectDaemonHostSources(): DaemonHostSources | null {
-  if (!isPackagedElectronWin32()) {
+  if (!isPackagedElectronRelocationSupported()) {
     return null
   }
   const resourcesPath = process.resourcesPath
@@ -137,15 +139,15 @@ function collectDaemonHostSources(): DaemonHostSources | null {
 }
 
 // Drop node-pty's .pdb symbols and non-host-arch prebuilds (its bulk); keyed on host arch so a future win32-arm64 build keeps the prebuild it needs.
-const HOST_WIN_PREBUILD_DIR = `win32-${process.arch}`.toLowerCase()
 function isRuntimeNodePtyPath(sourcePath: string): boolean {
   const p = sourcePath.toLowerCase()
   if (p.endsWith('.pdb')) {
     return false
   }
-  // Keep only the host arch's win32 prebuild; drop any other win32-<arch> dir.
-  const prebuild = p.match(/prebuilds[\\/](win32-[^\\/]+)/)
-  return !prebuild || prebuild[1] === HOST_WIN_PREBUILD_DIR
+  // Keep only the host arch's prebuild; drop any other prebuild dir.
+  const hostPrebuild = `${process.platform}-${process.arch}`.toLowerCase()
+  const prebuild = p.match(/prebuilds[\\/]([a-z0-9_]+-[a-z0-9_]+)/)
+  return !prebuild || prebuild[1] === hostPrebuild
 }
 
 /**
@@ -160,6 +162,16 @@ export function buildDaemonHostManifest(sources: DaemonHostSources): CopyOp[] {
   ops.push({ sourcePath: execPath, destRel: daemonHostExeName(execPath), kind: 'file' })
   for (const name of RUNTIME_DATA_FILES) {
     ops.push({ sourcePath: join(appDir, name), destRel: name, kind: 'file', optional: true })
+  }
+
+  // On Linux, Electron running as Node dynamically links libffmpeg.so when present alongside the executable.
+  if (process.platform === 'linux') {
+    ops.push({
+      sourcePath: join(appDir, 'libffmpeg.so'),
+      destRel: 'libffmpeg.so',
+      kind: 'file',
+      optional: true
+    })
   }
 
   // Daemon bundle: entry + sibling chunks/ + out/package.json (CJS/ESM loader resolution), mirrored verbatim.
@@ -209,6 +221,17 @@ function executeManifest(ops: CopyOp[], stagingRoot: string): void {
       force: true,
       ...(filter ? { filter: (src: string) => filter(src) } : {})
     })
+  }
+
+  if (process.platform !== 'win32' && ops.length > 0) {
+    const hostExeDest = destPath(stagingRoot, daemonHostExeName(ops[0].sourcePath))
+    if (existsSync(hostExeDest)) {
+      try {
+        chmodSync(hostExeDest, 0o755)
+      } catch {
+        // Best-effort
+      }
+    }
   }
 }
 
@@ -387,7 +410,7 @@ export function reclaimUnownedDaemonHostDir(
  * Best-effort — never throws; a locked/staging dir is retried on a future launch.
  */
 export function pruneOldDaemonHosts(evidence: PinnedDaemonVersionsEvidence): void {
-  if (!isPackagedElectronWin32()) {
+  if (!isPackagedElectronRelocationSupported()) {
     return
   }
   if (evidence.status === 'unverifiable') {
