@@ -182,6 +182,133 @@ describe('ProviderSegment monthly window', () => {
     expect(markup).toContain('30% used Fable')
     expect(markup).not.toContain('40% used')
   })
+
+  it('shows every Cursor pool in verbose mode with shortened labels', async () => {
+    const { ProviderSegment } = await import('./StatusBar')
+    const limits: ProviderRateLimits = {
+      provider: 'cursor',
+      session: null,
+      weekly: null,
+      buckets: [
+        { name: 'Cursor Models', ...windowOf(100, 43_200) },
+        { name: 'Other Models', ...windowOf(42, 43_200) },
+        { name: 'Grok Bot', ...windowOf(12, 7_102) }
+      ],
+      updatedAt: Date.now(),
+      error: null,
+      status: 'ok'
+    }
+
+    const markup = renderToStaticMarkup(
+      <ProviderSegment p={limits} compact={false} display="used" mode="verbose" />
+    )
+
+    expect(markup).toContain('Models 100% used')
+    expect(markup).toContain('Other 42% used')
+    expect(markup).toContain('Grok 12% used')
+    expect(markup).not.toContain('Cursor Models')
+  })
+
+  it('shows Cursor pools with shortened labels and time left in verbose mode', async () => {
+    const { ProviderSegment } = await import('./StatusBar')
+    const now = 1_700_000_000_000
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    const limits: ProviderRateLimits = {
+      provider: 'cursor',
+      session: null,
+      weekly: null,
+      buckets: [
+        { name: 'Cursor Models', ...windowOf(100, 43_200, now + 5 * 86_400_000) },
+        { name: 'Other Models', ...windowOf(42, 43_200, now + 5 * 86_400_000) },
+        { name: 'Grok Bot', ...windowOf(12, 7_102, now + 2 * 3600_000) }
+      ],
+      updatedAt: now,
+      error: null,
+      status: 'ok'
+    }
+
+    const markup = renderToStaticMarkup(
+      <ProviderSegment p={limits} compact={false} display="used" mode="verbose" />
+    )
+
+    expect(markup).toContain('Models 100% used 5d')
+    expect(markup).toContain('Other 42% used 5d')
+    expect(markup).toContain('Grok 12% used 2h')
+  })
+
+  it('shows Antigravity buckets with time left in verbose mode', async () => {
+    const { ProviderSegment } = await import('./StatusBar')
+    const now = 1_700_000_000_000
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    const limits: ProviderRateLimits = {
+      provider: 'antigravity',
+      session: null,
+      weekly: null,
+      buckets: [
+        { name: 'Gemini 5h', ...windowOf(40, 300, now + 2 * 3600_000) },
+        { name: 'Gemini 7d', ...windowOf(12, 10080, now + 6 * 86_400_000) }
+      ],
+      updatedAt: now,
+      error: null,
+      status: 'ok'
+    }
+
+    const markup = renderToStaticMarkup(
+      <ProviderSegment p={limits} compact={false} display="used" mode="verbose" />
+    )
+
+    expect(markup).toContain('Gemini 5h 40% used 2h')
+    expect(markup).toContain('Gemini 7d 12% used 6d')
+  })
+
+  it('shows Cursor tightest bucket with shortened label and time left in compact mode', async () => {
+    const { ProviderSegment } = await import('./StatusBar')
+    const now = 1_700_000_000_000
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    const limits: ProviderRateLimits = {
+      provider: 'cursor',
+      session: null,
+      weekly: null,
+      buckets: [
+        { name: 'Cursor Models', ...windowOf(100, 43_200, now + 5 * 86_400_000) },
+        { name: 'Other Models', ...windowOf(42, 43_200, now + 5 * 86_400_000) },
+        { name: 'Grok Bot', ...windowOf(12, 7_102, now + 2 * 3600_000) }
+      ],
+      updatedAt: now,
+      error: null,
+      status: 'ok'
+    }
+
+    const markup = renderToStaticMarkup(
+      <ProviderSegment p={limits} compact={false} display="used" mode="compact" />
+    )
+
+    expect(markup).toContain('100% used Models 5d')
+  })
+
+  it('shows Antigravity tightest bucket with time left in compact mode', async () => {
+    const { ProviderSegment } = await import('./StatusBar')
+    const now = 1_700_000_000_000
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    const limits: ProviderRateLimits = {
+      provider: 'antigravity',
+      session: null,
+      weekly: null,
+      buckets: [
+        { name: 'Gemini 5h', ...windowOf(40, 300, now + 2 * 3600_000) },
+        { name: 'Gemini 7d', ...windowOf(12, 10080, now + 6 * 86_400_000) }
+      ],
+      updatedAt: now,
+      error: null,
+      status: 'ok'
+    }
+
+    const markup = renderToStaticMarkup(
+      <ProviderSegment p={limits} compact={false} display="used" mode="compact" />
+    )
+
+    expect(markup).toContain('40% used Gemini 5h 2h')
+  })
 })
 
 describe('undefined provider window safety (crash d2c1da69 / bb74236c)', () => {

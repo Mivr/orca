@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { formatResetCountdown, formatResetDuration } from '../../../shared/rate-limit-reset-format'
-import { formatRateLimitWindowChipLabel, formatWindowLabel } from './window-label-formatter'
+import {
+  formatRateLimitWindowChipLabel,
+  formatStatusBarBucketName,
+  formatWindowLabel
+} from './window-label-formatter'
 
 const MIN = 60_000
 const HOUR = 60 * MIN
@@ -86,3 +90,35 @@ describe('formatRateLimitWindowChipLabel', () => {
     )
   })
 })
+
+describe('formatStatusBarBucketName', () => {
+  it('shortens standard Cursor model buckets', () => {
+    expect(formatStatusBarBucketName('Cursor Models', 'cursor')).toBe('Models')
+    expect(formatStatusBarBucketName('Other Models', 'cursor')).toBe('Other')
+    expect(formatStatusBarBucketName('Grok Bot', 'cursor')).toBe('Grok')
+    expect(formatStatusBarBucketName('Cursor Tab', 'cursor')).toBe('Tab')
+  })
+
+  it('shortens Cursor bucket names even if provider is omitted', () => {
+    expect(formatStatusBarBucketName('Cursor Models')).toBe('Models')
+    expect(formatStatusBarBucketName('Other Models')).toBe('Other')
+    expect(formatStatusBarBucketName('Grok Bot')).toBe('Grok')
+  })
+
+  it('preserves other Cursor bucket names such as On-demand', () => {
+    expect(formatStatusBarBucketName('On-demand', 'cursor')).toBe('On-demand')
+  })
+
+  it('preserves Antigravity bucket names', () => {
+    expect(formatStatusBarBucketName('Gemini 5h', 'antigravity')).toBe('Gemini 5h')
+    expect(formatStatusBarBucketName('Gemini 7d', 'antigravity')).toBe('Gemini 7d')
+    expect(formatStatusBarBucketName('Frontier 5h', 'antigravity')).toBe('Frontier 5h')
+    expect(formatStatusBarBucketName('Frontier 7d', 'antigravity')).toBe('Frontier 7d')
+  })
+
+  it('preserves Gemini model buckets', () => {
+    expect(formatStatusBarBucketName('Flash', 'gemini')).toBe('Flash')
+    expect(formatStatusBarBucketName('Pro', 'gemini')).toBe('Pro')
+  })
+})
+

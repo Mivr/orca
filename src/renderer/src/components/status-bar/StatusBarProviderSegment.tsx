@@ -1,5 +1,5 @@
 import { AlertTriangle } from 'lucide-react'
-import React from 'react'
+import React, { useMemo } from 'react'
 import type { ProviderRateLimits, RateLimitWindow } from '../../../../shared/rate-limit-types'
 import {
   getDisplayedUsagePercentage,
@@ -8,7 +8,12 @@ import {
 import type { StatusBarUsageMode } from '../../../../shared/status-bar-usage-mode'
 import { ProviderIcon, clampUsedPercent, getProviderUsageStatusLabel } from './tooltip'
 import { getTightestUsageSection } from './UsageRosterPanel'
-import { formatRateLimitWindowChipLabel } from '@/lib/window-label-formatter'
+import {
+  formatRateLimitWindowChipLabel,
+  formatStatusBarBucketName
+} from '@/lib/window-label-formatter'
+import { formatResetDuration } from '../../../../shared/rate-limit-reset-format'
+import { useResetCountdownClock } from '@/hooks/useResetCountdownClock'
 import { formatUsagePercentageLabel } from './usage-percentage-label'
 import { translate } from '@/i18n/i18n'
 
@@ -98,10 +103,12 @@ const STATUS_BAR_BUCKET_NAMES = new Set(['Flash', 'Pro', '1.5 Pro'])
 
 function VerboseProviderUsage({
   p,
-  display
+  display,
+  now = Date.now()
 }: {
   p: ProviderRateLimits
   display: UsagePercentageDisplay
+  now?: number
 }): React.JSX.Element {
   if (p.buckets && p.buckets.length > 0) {
     const visibleBuckets =
@@ -110,18 +117,24 @@ function VerboseProviderUsage({
         : p.buckets
     return (
       <>
-        {visibleBuckets.map((bucket, index) => (
-          <React.Fragment key={bucket.name}>
-            {index > 0 ? <span className="text-muted-foreground">·</span> : null}
-            <span className="tabular-nums">
-              {bucket.name} {formatUsagePercentageLabel(bucket.usedPercent, display)}
-            </span>
-          </React.Fragment>
-        ))}
+        {visibleBuckets.map((bucket, index) => {
+          const shortName = formatStatusBarBucketName(bucket.name, p.provider)
+          const resetDuration =
+            bucket.resetsAt != null ? formatResetDuration(bucket.resetsAt - now) : null
+          return (
+            <React.Fragment key={bucket.name}>
+              {index > 0 ? <span className="text-muted-foreground">·</span> : null}
+              <span className="tabular-nums">
+                {shortName} {formatUsagePercentageLabel(bucket.usedPercent, display)}
+                {resetDuration ? ` ${resetDuration}` : ''}
+              </span>
+            </React.Fragment>
+          )
+        })}
         {visibleBuckets.length === 0 && p.session ? (
           <WindowLabel
             w={p.session}
-            label={formatRateLimitWindowChipLabel(p.session)}
+            label={formatRateLimitWindowChipLabel(p.session, now)}
             display={display}
           />
         ) : null}
@@ -134,14 +147,14 @@ function VerboseProviderUsage({
       ? {
           key: 'session',
           window: p.session,
-          label: formatRateLimitWindowChipLabel(p.session)
+          label: formatRateLimitWindowChipLabel(p.session, now)
         }
       : null,
     p.weekly
       ? {
           key: 'weekly',
           window: p.weekly,
-          label: formatRateLimitWindowChipLabel(p.weekly)
+          label: formatRateLimitWindowChipLabel(p.weekly, now)
         }
       : null,
     p.fableWeekly
@@ -156,7 +169,7 @@ function VerboseProviderUsage({
       ? {
           key: 'monthly',
           window: p.monthly,
-          label: formatRateLimitWindowChipLabel(p.monthly)
+          label: formatRateLimitWindowChipLabel(p.monthly, now)
         }
       : null
   ].filter((window): window is { key: string; window: RateLimitWindow; label: string } => {
@@ -186,6 +199,18 @@ export function ProviderSegment({
   display: UsagePercentageDisplay
   mode?: StatusBarUsageMode
 }): React.JSX.Element {
+  const resetTimes = useMemo(
+    () => [
+      p?.session?.resetsAt,
+      p?.weekly?.resetsAt,
+      p?.fableWeekly?.resetsAt,
+      p?.monthly?.resetsAt,
+      ...(p?.buckets?.map((b) => b.resetsAt) ?? [])
+    ],
+    [p]
+  )
+  const now = useResetCountdownClock(resetTimes)
+
   const provider = p?.provider ?? 'claude'
   const statusLabel = p ? getProviderUsageStatusLabel(p) : ''
 
@@ -199,7 +224,7 @@ export function ProviderSegment({
     )
   }
 
-  const tightest = getTightestUsageSection(p)
+  const tightest = getTightestUsageSection(p, now)
 
   // Fetching with no prior data
   if (p.status === 'fetching' && !tightest) {
@@ -242,7 +267,7 @@ export function ProviderSegment({
           {tightest && !compact ? (
             <MiniBar usedPct={clampUsedPercent(tightest.window.usedPercent)} display={display} />
           ) : null}
-          <VerboseProviderUsage p={p} display={display} />
+          <VerboseProviderUsage p={p} display={display} now={now} />
         </>
       ) : tightest ? (
         <WindowLabel
