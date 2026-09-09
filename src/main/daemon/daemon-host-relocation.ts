@@ -224,7 +224,7 @@ function executeManifest(ops: CopyOp[], stagingRoot: string): void {
   }
 
   if (process.platform !== 'win32' && ops.length > 0) {
-    const hostExeDest = destPath(stagingRoot, daemonHostExeName(ops[0].sourcePath))
+    const hostExeDest = destPath(stagingRoot, ops[0].destRel)
     if (existsSync(hostExeDest)) {
       try {
         chmodSync(hostExeDest, 0o755)

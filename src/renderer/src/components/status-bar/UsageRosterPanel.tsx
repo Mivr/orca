@@ -50,6 +50,14 @@ function shortLabel(
   if (p.buckets?.some((b) => b.name === section.label)) {
     const shortName = formatStatusBarBucketName(section.label, p.provider)
     if (useRemainingDuration && section.window.resetsAt != null) {
+      if (p.provider === 'antigravity') {
+        if (shortName === '7d' || shortName === '5h') {
+          return formatResetDuration(section.window.resetsAt - now)
+        }
+        if (shortName.startsWith('Other')) {
+          return `Other ${formatResetDuration(section.window.resetsAt - now)}`
+        }
+      }
       return `${shortName} ${formatResetDuration(section.window.resetsAt - now)}`
     }
     return shortName
