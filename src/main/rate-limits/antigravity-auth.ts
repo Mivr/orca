@@ -62,9 +62,9 @@ except Exception:
 `
 
 export function readKeyringSecret(): string | null {
-  const customSecret = process.env.ORCA_ANTIGRAVITY_KEYRING_MOCK?.trim()
-  if (customSecret) {
-    return customSecret
+  if (process.env.ORCA_ANTIGRAVITY_KEYRING_MOCK !== undefined) {
+    const customSecret = process.env.ORCA_ANTIGRAVITY_KEYRING_MOCK.trim()
+    return customSecret.length > 0 ? customSecret : null
   }
 
   if (process.platform === 'linux') {
@@ -165,26 +165,29 @@ export function readAntigravityAuthSession(): AntigravityAuthReadResult {
     }
   }
 
-  if (hasFleetOverride) {
+  if (keyringSession) {
     return {
       status: 'ok',
       session: {
-        accessToken: keyringSession?.accessToken,
-        refreshToken: keyringSession?.refreshToken,
-        expiresAtMs: keyringSession?.expiresAtMs,
-        email: keyringSession?.email ?? null,
-        planTier: fleetPlanTier,
-        source: 'fleet-override',
-        authMethod: keyringSession?.authMethod ?? 'consumer',
-        overridePath
+        ...keyringSession,
+        overridePath: hasFleetOverride ? overridePath : null
       }
     }
   }
 
-  if (keyringSession) {
+  if (hasFleetOverride) {
     return {
       status: 'ok',
-      session: keyringSession
+      session: {
+        accessToken: undefined,
+        refreshToken: null,
+        expiresAtMs: null,
+        email: null,
+        planTier: fleetPlanTier,
+        source: 'fleet-override',
+        authMethod: 'consumer',
+        overridePath
+      }
     }
   }
 

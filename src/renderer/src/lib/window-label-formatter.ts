@@ -63,6 +63,21 @@ export function formatRateLimitWindowChipLabel(
 export function formatStatusBarBucketName(name: string, provider?: string): string {
   const norm = name.trim().toLowerCase()
   if (
+    provider === 'antigravity' ||
+    norm.startsWith('gemini') ||
+    norm.startsWith('frontier') ||
+    norm === 'other 7d' ||
+    norm === 'other 5h'
+  ) {
+    if (norm === 'gemini 7d' || norm === '7d') return '7d'
+    if (norm === 'gemini 5h' || norm === '5h') return '5h'
+    if (norm === 'frontier 7d' || norm === 'other 7d') return 'Other 7d'
+    if (norm === 'frontier 5h' || norm === 'other 5h') return 'Other 5h'
+    if (norm === 'frontier') return 'Other'
+    if (norm.startsWith('gemini ')) return name.slice(7)
+    if (norm.startsWith('frontier ')) return `Other ${name.slice(9)}`
+  }
+  if (
     provider === 'cursor' ||
     norm.startsWith('cursor') ||
     norm === 'other models' ||

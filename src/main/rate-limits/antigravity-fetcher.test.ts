@@ -8,7 +8,9 @@ import {
   ANTIGRAVITY_GEMINI_5H_BUCKET,
   ANTIGRAVITY_GEMINI_7D_BUCKET,
   fetchAntigravityRateLimits,
-  mapFleetOverrideToBuckets
+  mapFleetOverrideToBuckets,
+  mapLiveQuotaSummaryToBuckets,
+  type LiveQuotaSummaryResponse
 } from './antigravity-fetcher'
 
 describe('antigravity-fetcher', () => {
@@ -64,6 +66,75 @@ describe('antigravity-fetcher', () => {
     })
   })
 
+  describe('mapLiveQuotaSummaryToBuckets', () => {
+    it('maps live Google quota summary into 4 Option A buckets', () => {
+      const summary: LiveQuotaSummaryResponse = {
+        groups: [
+          {
+            displayName: 'Gemini Models',
+            buckets: [
+              {
+                bucketId: 'gemini-weekly',
+                displayName: 'Weekly Limit Remaining',
+                window: 'weekly',
+                resetTime: '2026-09-10T22:34:50Z',
+                remainingFraction: 0.558
+              },
+              {
+                bucketId: 'gemini-5h',
+                displayName: 'Five Hour Limit Remaining',
+                window: '5h',
+                resetTime: '2026-09-09T22:12:59Z',
+                remainingFraction: 0.849
+              }
+            ]
+          },
+          {
+            displayName: 'Claude and GPT models',
+            buckets: [
+              {
+                bucketId: '3p-weekly',
+                displayName: 'Weekly Limit Remaining',
+                window: 'weekly',
+                resetTime: '2026-09-14T12:31:30Z',
+                remainingFraction: 0.909
+              },
+              {
+                bucketId: '3p-5h',
+                displayName: 'Five Hour Limit Remaining',
+                window: '5h',
+                resetTime: '2026-09-09T22:13:48Z',
+                remainingFraction: 1.0
+              }
+            ]
+          }
+        ]
+      }
+
+      const { buckets, session, weekly } = mapLiveQuotaSummaryToBuckets(summary)
+      expect(buckets).toHaveLength(4)
+
+      const g7d = buckets.find((b) => b.name === '7d')
+      expect(g7d?.usedPercent).toBeCloseTo(44.2, 1)
+      expect(g7d?.resetsAt).toBe(Date.parse('2026-09-10T22:34:50Z'))
+
+      const g5h = buckets.find((b) => b.name === '5h')
+      expect(g5h?.usedPercent).toBeCloseTo(15.1, 1)
+      expect(g5h?.resetsAt).toBe(Date.parse('2026-09-09T22:12:59Z'))
+
+      const f7d = buckets.find((b) => b.name === 'Other 7d')
+      expect(f7d?.usedPercent).toBeCloseTo(9.1, 1)
+      expect(f7d?.resetsAt).toBe(Date.parse('2026-09-14T12:31:30Z'))
+
+      const f5h = buckets.find((b) => b.name === 'Other 5h')
+      expect(f5h?.usedPercent).toBe(0)
+      expect(f5h?.resetsAt).toBe(Date.parse('2026-09-09T22:13:48Z'))
+
+      expect(weekly?.usedPercent).toBeCloseTo(44.2, 1)
+      expect(session?.usedPercent).toBeCloseTo(15.1, 1)
+    })
+  })
+
   describe('fetchAntigravityRateLimits', () => {
     it('returns unavailable when auth session is missing', async () => {
       const limits = await fetchAntigravityRateLimits(() => ({ status: 'missing' }))
@@ -81,63 +152,144 @@ describe('antigravity-fetcher', () => {
       expect(limits.error).toBe('Keyring unreadable')
     })
 
-    it('fetches rate limits from fleet override file and enriches with email', async () => {
-      const dir = mkdtempSync(join(tmpdir(), 'orca-ag-fetcher-'))
+    it('fetches live rate limits from Google quota summary API', async () => {
+      const mockQuotaSummary = vi.fn().mockResolvedValue({
+        status: 'ok',
+        data: {
+          groups: [
+            {
+              displayName: 'Gemini Models',
+              buckets: [
+                {
+                  bucketId: 'gemini-weekly',
+                  window: 'weekly',
+                  remainingFraction: 0.558,
+                  resetTime: '2026-09-10T22:34:50Z'
+                },
+                {
+                  bucketId: 'gemini-5h',
+                  window: '5h',
+                  remainingFraction: 0.849,
+                  resetTime: '2026-09-09T22:12:59Z'
+                }
+              ]
+            }
+          ]
+        }
+      })
+      const mockEmail = vi.fn().mockResolvedValue('mihail@example.com')
+
+      const limits = await fetchAntigravityRateLimits({
+        authReadResult: {
+          status: 'ok',
+          session: {
+            accessToken: 'ya29.live-token',
+            email: null,
+            planTier: 'Google AI Ultra',
+            source: 'keyring',
+            authMethod: 'consumer'
+          }
+        },
+        fetchQuotaSummary: mockQuotaSummary,
+        fetchEmail: mockEmail
+      })
+
+      expect(limits.status).toBe('ok')
+      expect(limits.provider).toBe('antigravity')
+      expect(limits.usageMetadata?.accountEmail).toBe('mihail@example.com')
+      expect(limits.usageMetadata?.credentialSource).toBe('keyring')
+      expect(limits.buckets).toHaveLength(2)
+      expect(limits.buckets[0]?.name).toBe('7d')
+      expect(limits.buckets[1]?.name).toBe('5h')
+      expect(mockQuotaSummary).toHaveBeenCalledWith('ya29.live-token', undefined)
+    })
+
+    it('refreshes token on 401 unauthorized and retries', async () => {
+      let callCount = 0
+      const mockQuotaSummary = vi.fn().mockImplementation(async (_token: string) => {
+        callCount++
+        if (callCount === 1) {
+          return { status: 'unauthorized' }
+        }
+        return {
+          status: 'ok',
+          data: {
+            groups: [
+              {
+                displayName: 'Gemini Models',
+                buckets: [
+                  {
+                    bucketId: 'gemini-weekly',
+                    window: 'weekly',
+                    remainingFraction: 0.6,
+                    resetTime: '2026-09-10T22:34:50Z'
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      })
+      const mockRefreshToken = vi.fn().mockResolvedValue('ya29.refreshed-token')
+
+      const limits = await fetchAntigravityRateLimits({
+        authReadResult: {
+          status: 'ok',
+          session: {
+            accessToken: 'ya29.old-token',
+            refreshToken: '1//refresh-secret',
+            email: 'mihail@example.com',
+            planTier: 'Google AI Ultra',
+            source: 'keyring',
+            authMethod: 'consumer'
+          }
+        },
+        fetchQuotaSummary: mockQuotaSummary,
+        refreshToken: mockRefreshToken
+      })
+
+      expect(limits.status).toBe('ok')
+      expect(mockRefreshToken).toHaveBeenCalledWith('1//refresh-secret', undefined)
+      expect(mockQuotaSummary).toHaveBeenCalledTimes(2)
+      expect(mockQuotaSummary).toHaveBeenNthCalledWith(2, 'ya29.refreshed-token', undefined)
+    })
+
+    it('falls back to fleet override if live fetch fails and override is present', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'orca-ag-fetcher-fallback-'))
       dirs.push(dir)
       const overridePath = join(dir, 'google-usage-override.json')
       writeFileSync(
         overridePath,
         JSON.stringify({
           gemini_7d: { remaining_percent: 98.53, resets_at: 1788879157 },
-          gemini_5h: { remaining_percent: 100.0, resets_at: null },
           source: 'google-ultra'
         })
       )
 
-      const mockFetchEmail = vi.fn().mockResolvedValue('user@example.com')
-      const limits = await fetchAntigravityRateLimits(
-        () => ({
+      const mockQuotaSummary = vi.fn().mockResolvedValue({
+        status: 'error',
+        error: 'Network timeout'
+      })
+
+      const limits = await fetchAntigravityRateLimits({
+        authReadResult: {
           status: 'ok',
           session: {
-            accessToken: 'ya29.test',
-            email: null,
+            accessToken: 'ya29.failing-token',
+            email: 'user@example.com',
             planTier: 'Google AI Ultra',
-            source: 'fleet-override',
+            source: 'keyring',
             authMethod: 'consumer',
             overridePath
           }
-        }),
-        mockFetchEmail
-      )
+        },
+        fetchQuotaSummary: mockQuotaSummary
+      })
 
       expect(limits.status).toBe('ok')
-      expect(limits.provider).toBe('antigravity')
-      expect(limits.planType).toBe('Google AI Ultra')
-      expect(limits.usageMetadata?.accountEmail).toBe('user@example.com')
-      expect(limits.usageMetadata?.subscriptionStatus).toBe('Google AI Ultra')
-      expect(limits.buckets).toHaveLength(2)
-      expect(mockFetchEmail).toHaveBeenCalledWith('ya29.test')
-    })
-
-    it('returns ok with empty buckets when signed in via keyring without override', async () => {
-      const limits = await fetchAntigravityRateLimits(
-        () => ({
-          status: 'ok',
-          session: {
-            accessToken: 'ya29.keyring-only',
-            email: 'dev@gmail.com',
-            planTier: 'Google AI Ultra',
-            source: 'keyring',
-            authMethod: 'consumer'
-          }
-        }),
-        async () => null
-      )
-
-      expect(limits.status).toBe('ok')
-      expect(limits.usageMetadata?.accountEmail).toBe('dev@gmail.com')
-      expect(limits.usageMetadata?.credentialSource).toBe('keyring')
-      expect(limits.buckets).toEqual([])
+      expect(limits.usageMetadata?.credentialSource).toBe('fleet-override')
+      expect(limits.buckets).toHaveLength(1)
+      expect(limits.buckets[0]?.name).toBe('7d')
     })
   })
 })
