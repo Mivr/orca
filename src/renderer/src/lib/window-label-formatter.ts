@@ -55,17 +55,28 @@ export function formatRateLimitWindowChipLabel(
  *
  * Why: Full bucket names like "Cursor Models", "Other Models", or "Grok Bot"
  * consume too much horizontal space in the bottom bar alongside the provider icon.
+ * Mapping:
+ * - "Cursor Models" -> "Internal"
+ * - "Other Models"  -> "External"
+ * - "Grok Bot"      -> "bot"
  */
 export function formatStatusBarBucketName(name: string, provider?: string): string {
-  if (provider === 'cursor') {
-    if (name === 'Cursor Models') return 'Models'
-    if (name === 'Other Models') return 'Other'
-    if (name === 'Grok Bot') return 'Grok'
-    if (name.startsWith('Cursor ')) return name.slice(7)
+  const norm = name.trim().toLowerCase()
+  if (
+    provider === 'cursor' ||
+    norm.startsWith('cursor') ||
+    norm === 'other models' ||
+    norm === 'grok bot' ||
+    norm === 'other model'
+  ) {
+    if (norm === 'cursor models' || norm === 'cursor model') return 'Internal'
+    if (norm === 'other models' || norm === 'other model') return 'External'
+    if (norm === 'grok bot' || norm === 'grok') return 'bot'
+    if (provider === 'cursor' && name.startsWith('Cursor ')) return name.slice(7)
   }
-  if (name === 'Cursor Models') return 'Models'
-  if (name === 'Other Models') return 'Other'
-  if (name === 'Grok Bot') return 'Grok'
+  if (norm === 'cursor models') return 'Internal'
+  if (norm === 'other models') return 'External'
+  if (norm === 'grok bot') return 'bot'
   return name
 }
 

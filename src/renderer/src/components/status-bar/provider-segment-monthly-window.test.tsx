@@ -203,9 +203,9 @@ describe('ProviderSegment monthly window', () => {
       <ProviderSegment p={limits} compact={false} display="used" mode="verbose" />
     )
 
-    expect(markup).toContain('Models 100% used')
-    expect(markup).toContain('Other 42% used')
-    expect(markup).toContain('Grok 12% used')
+    expect(markup).toContain('Internal 100% used')
+    expect(markup).toContain('External 42% used')
+    expect(markup).toContain('bot 12% used')
     expect(markup).not.toContain('Cursor Models')
   })
 
@@ -218,9 +218,9 @@ describe('ProviderSegment monthly window', () => {
       session: null,
       weekly: null,
       buckets: [
-        { name: 'Cursor Models', ...windowOf(100, 43_200, now + 5 * 86_400_000) },
-        { name: 'Other Models', ...windowOf(42, 43_200, now + 5 * 86_400_000) },
-        { name: 'Grok Bot', ...windowOf(12, 7_102, now + 2 * 3600_000) }
+        { name: 'Cursor Models', ...windowOf(100, 43_200, now + 19 * 86_400_000) },
+        { name: 'Other Models', ...windowOf(42, 43_200, now + 19 * 86_400_000) },
+        { name: 'Grok Bot', ...windowOf(12, 7_102, now + 5 * 86_400_000) }
       ],
       updatedAt: now,
       error: null,
@@ -231,9 +231,9 @@ describe('ProviderSegment monthly window', () => {
       <ProviderSegment p={limits} compact={false} display="used" mode="verbose" />
     )
 
-    expect(markup).toContain('Models 100% used 5d')
-    expect(markup).toContain('Other 42% used 5d')
-    expect(markup).toContain('Grok 12% used 2h')
+    expect(markup).toContain('Internal 100% used 19d')
+    expect(markup).toContain('External 42% used 19d')
+    expect(markup).toContain('bot 12% used 5d')
   })
 
   it('shows Antigravity buckets with time left in verbose mode', async () => {
@@ -270,9 +270,9 @@ describe('ProviderSegment monthly window', () => {
       session: null,
       weekly: null,
       buckets: [
-        { name: 'Cursor Models', ...windowOf(100, 43_200, now + 5 * 86_400_000) },
-        { name: 'Other Models', ...windowOf(42, 43_200, now + 5 * 86_400_000) },
-        { name: 'Grok Bot', ...windowOf(12, 7_102, now + 2 * 3600_000) }
+        { name: 'Cursor Models', ...windowOf(100, 43_200, now + 19 * 86_400_000) },
+        { name: 'Other Models', ...windowOf(42, 43_200, now + 19 * 86_400_000) },
+        { name: 'Grok Bot', ...windowOf(12, 7_102, now + 5 * 86_400_000) }
       ],
       updatedAt: now,
       error: null,
@@ -283,7 +283,7 @@ describe('ProviderSegment monthly window', () => {
       <ProviderSegment p={limits} compact={false} display="used" mode="compact" />
     )
 
-    expect(markup).toContain('100% used Models 5d')
+    expect(markup).toContain('100% used Internal 19d')
   })
 
   it('shows Antigravity tightest bucket with time left in compact mode', async () => {
