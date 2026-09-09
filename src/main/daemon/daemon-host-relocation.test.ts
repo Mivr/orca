@@ -249,10 +249,25 @@ describe('materializeRelocatedDaemonHost', () => {
     expect(remaining).toEqual([])
   })
 
-  it('returns null off win32', () => {
+  it('returns null on unsupported platforms (e.g. darwin)', () => {
     setProcessProp('platform', 'darwin')
     expect(materializeRelocatedDaemonHost()).toBeNull()
     expect(existsSync(join(localAppDataDir, 'Orca', 'daemon-host'))).toBe(false)
+  })
+
+  it('materializes relocated host on linux with libffmpeg.so', () => {
+    setProcessProp('platform', 'linux')
+    delete process.env.LOCALAPPDATA
+    setProcessProp('execPath', join(installDir, 'orca-ide'))
+    writeFileSync(join(installDir, 'orca-ide'), 'elf-bytes')
+    writeFileSync(join(installDir, 'libffmpeg.so'), 'ffmpeg-so')
+    const result = materializeRelocatedDaemonHost()
+    expect(result).not.toBeNull()
+    const dest = join(userDataDir, 'daemon-host', '9.9.9')
+    expect(result?.execPath).toBe(join(dest, 'orca-ide'))
+    expect(existsSync(join(dest, 'libffmpeg.so'))).toBe(true)
+    expect(existsSync(result!.entryPath)).toBe(true)
+    expect(readFileSync(result!.execPath, 'utf8')).toBe('elf-bytes')
   })
 
   it('does nothing for a packaged host with no asar root (orcad on win32)', () => {
