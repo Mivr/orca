@@ -27,7 +27,7 @@ export {
 } from './accounts-snapshot'
 
 export type ProviderKey = 'claude' | 'codex'
-export type HostUsageProviderKey = 'grok' | 'cursor'
+export type HostUsageProviderKey = 'grok' | 'cursor' | 'antigravity'
 
 export type UsageBarState = {
   usedPercent: number | null
@@ -40,13 +40,6 @@ export function getActiveProviderRateLimits(
   provider: ProviderKey
 ): ProviderRateLimits | null {
   return provider === 'claude' ? snapshot.rateLimits.claude : snapshot.rateLimits.codex
-}
-
-export function getHostProviderRateLimits(
-  snapshot: AccountsSnapshot,
-  provider: HostUsageProviderKey
-): ProviderRateLimits | null {
-  return snapshot.rateLimits[provider] ?? null
 }
 
 export function getInactiveProviderUsage(
@@ -119,6 +112,13 @@ export function getWindowResetLabel(
   return formatResetCountdown(resetsAt - now)
 }
 
+export function getHostProviderRateLimits(
+  snapshot: AccountsSnapshot,
+  provider: HostUsageProviderKey
+): ProviderRateLimits | null {
+  return snapshot.rateLimits[provider] ?? null
+}
+
 export function getBucketUsageBarState(
   limits: ProviderRateLimits | null,
   bucketName: string,
@@ -139,8 +139,11 @@ export function getBucketResetLabel(
   bucketName: string,
   now: number
 ): string | null {
-  const resetsAt = limits?.buckets?.find((entry) => entry.name === bucketName)?.resetsAt
-  return resetsAt == null ? null : formatResetCountdown(resetsAt - now)
+  const bucket = limits?.buckets?.find((entry) => entry.name === bucketName)
+  if (bucket?.resetsAt == null) {
+    return null
+  }
+  return formatResetCountdown(bucket.resetsAt - now)
 }
 
 // Why: the usage UI must render for the system-default login, not only for

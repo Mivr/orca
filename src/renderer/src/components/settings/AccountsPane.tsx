@@ -18,6 +18,7 @@ import {
   getAccountsClaudeSearchEntries,
   getAccountsCodexSearchEntries,
   getAccountsCursorSearchEntries,
+  getAccountsAntigravitySearchEntries,
   getAccountsGeminiSearchEntries,
   getAccountsGrokSearchEntries,
   getAccountsLocationSearchEntries,
@@ -38,6 +39,7 @@ import {
 import { Separator } from '../ui/separator'
 import { GrokAccountsSection } from './GrokAccountsSection'
 import { CursorAccountsSection } from './CursorAccountsSection'
+import { AntigravityAccountsSection } from './AntigravityAccountsSection'
 import type {
   AccountsPaneProps,
   AccountsPaneSectionModel,
@@ -382,6 +384,9 @@ export function AccountsPane({
     ) : null,
     matchesSettingsSearch(searchQuery, getAccountsCursorSearchEntries()) ? (
       <CursorAccountsSection key="cursor" />
+    ) : null,
+    matchesSettingsSearch(searchQuery, getAccountsAntigravitySearchEntries()) ? (
+      <AntigravityAccountsSection key="antigravity" />
     ) : null
   ].filter(Boolean)
 

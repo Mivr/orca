@@ -22,6 +22,7 @@ import {
 } from './service-types'
 import { readGrokAuthSession } from '../grok-auth'
 import { readCursorAuthSession } from '../cursor-auth'
+import { readAntigravityAuthSession } from '../antigravity-auth'
 
 export abstract class RateLimitServiceState {
   protected state: InternalRateLimitState = {
@@ -37,6 +38,7 @@ export abstract class RateLimitServiceState {
   }
   protected grokAuthConfigured = readGrokAuthSession().status === 'ok'
   protected cursorAuthConfigured = readCursorAuthSession().status === 'ok'
+  protected antigravityAuthConfigured = readAntigravityAuthSession().status === 'ok'
   protected pollInterval: number = DEFAULT_POLL_MS
   protected timer: ReturnType<typeof setInterval> | null = null
   protected deferredStartupRefreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -71,6 +73,7 @@ export abstract class RateLimitServiceState {
   protected codexOnlyFetchQueued = false
   protected claudeOnlyFetchQueued = false
   protected grokOnlyFetchQueued = false
+  protected antigravityOnlyFetchQueued = false
   protected activeFetchAbortControllers = new Set<AbortController>()
   protected fetchIdleResolvers: (() => void)[] = []
   protected codexFetchGeneration = 0

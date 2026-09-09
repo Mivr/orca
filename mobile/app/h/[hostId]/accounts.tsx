@@ -36,6 +36,7 @@ import { CodexResetCreditAction } from '../../../src/components/CodexResetCredit
 import { useCodexResetCreditAction } from '../../../src/components/use-codex-reset-credit-action'
 import { HostUsageSections } from '../../../src/accounts/host-usage-sections'
 import { CursorHostUsageSection } from '../../../src/accounts/cursor-host-usage-section'
+import { AntigravityHostUsageSection } from '../../../src/accounts/antigravity-host-usage-section'
 
 export default function AccountsScreen() {
   const router = useRouter()
@@ -384,6 +385,7 @@ export default function AccountsScreen() {
             {renderProviderSection('claude', 'Claude')}
             {renderProviderSection('codex', 'Codex')}
             <CursorHostUsageSection snapshot={snapshot} now={now} />
+            <AntigravityHostUsageSection snapshot={snapshot} now={now} />
             <HostUsageSections
               snapshot={snapshot}
               now={now}

@@ -115,6 +115,7 @@ export function useStatusBarController(floatingTerminalOpen: boolean) {
   const usageSettings = {
     ...settings,
     antigravityUsageConfigured,
+    antigravityAuthConfigured: rateLimits.antigravityAuthConfigured,
     minimaxCookieConfigured: rateLimits.minimaxCookieConfigured,
     minimaxApiKeyConfigured: rateLimits.minimaxApiKeyConfigured,
     grokAuthConfigured: rateLimits.grokAuthConfigured,
@@ -148,7 +149,7 @@ export function useStatusBarController(floatingTerminalOpen: boolean) {
   const showAntigravity =
     visibleAntigravity !== null &&
     statusBarItems.includes('antigravity') &&
-    isStatusBarItemAvailable('antigravity', detectedAgentIds)
+    (rateLimits.antigravityAuthConfigured || isStatusBarItemAvailable('antigravity', detectedAgentIds))
   // Why: MiniMax is cookie-auth, not a CLI on PATH, so detection-gating doesn't apply.
   const showMiniMax = visibleMiniMax !== null && statusBarItems.includes('minimax')
   const showGrok =

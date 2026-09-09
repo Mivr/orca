@@ -19,6 +19,7 @@ export type UsageProviderSettings = Pick<
   minimaxApiKeyConfigured: boolean
   grokAuthConfigured: boolean
   cursorAuthConfigured: boolean
+  antigravityAuthConfigured?: boolean
 }
 
 type UsageProviderSnapshots = {
@@ -77,8 +78,7 @@ export function hasUsageProviderSettings(
     (settings?.claudeManagedAccounts?.length ?? 0) > 0 ||
     settings?.geminiCliOAuthEnabled === true ||
     Boolean(settings?.opencodeSessionCookie?.trim()) ||
-    // Antigravity's durable signal requires geminiCliOAuthEnabled, so it is
-    // already covered by the gemini term above.
+    settings?.antigravityAuthConfigured === true ||
     settings?.minimaxCookieConfigured === true ||
     settings?.minimaxApiKeyConfigured === true ||
     settings?.grokAuthConfigured === true ||
@@ -106,10 +106,10 @@ export function hasUsageProviderSettingsForProvider(
     return Boolean(settings.opencodeSessionCookie?.trim())
   }
   if (providerId === 'antigravity') {
-    // Why: the Antigravity snapshot mirrors the Gemini fetch, which stays
-    // 'unavailable' until the user opts into Gemini CLI OAuth. Without that
-    // gate the default-on checked item would pin a permanently dead bar.
-    return settings.antigravityUsageConfigured === true && settings.geminiCliOAuthEnabled === true
+    return (
+      settings.antigravityAuthConfigured === true ||
+      (settings.antigravityUsageConfigured === true && settings.geminiCliOAuthEnabled === true)
+    )
   }
   if (providerId === 'minimax') {
     return settings.minimaxCookieConfigured === true || settings.minimaxApiKeyConfigured === true
@@ -121,6 +121,17 @@ export function hasUsageProviderSettingsForProvider(
     return settings.cursorAuthConfigured === true
   }
   return false
+}
+
+export function isAntigravityStatusBarAvailable(
+  provider: ProviderRateLimits | null | undefined,
+  antigravityAuthConfigured: boolean
+): boolean {
+  return (
+    getVisibleUsageProvider('antigravity', provider, {
+      antigravityAuthConfigured
+    }) !== null
+  )
 }
 
 export function isCursorStatusBarAvailable(

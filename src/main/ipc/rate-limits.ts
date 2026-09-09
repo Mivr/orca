@@ -39,6 +39,7 @@ export function registerRateLimitHandlers(
   )
   ipcMain.handle('rateLimits:refreshMiniMax', () => rateLimits.refresh())
   ipcMain.handle('rateLimits:refreshGrok', () => rateLimits.refreshGrok())
+  ipcMain.handle('rateLimits:refreshAntigravity', () => rateLimits.refreshAntigravity())
   ipcMain.handle('rateLimits:consumeGrokResetCredit', async () => {
     const result = await consumeGrokResetCredit(randomUUID())
     return { outcome: result.outcome, state: result.snapshot.rateLimits }

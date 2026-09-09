@@ -27,6 +27,10 @@ vi.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ bottom: 0, left: 0, right: 0, top: 0 })
 }))
 
+vi.mock('expo-crypto', () => ({
+  randomUUID: vi.fn(() => 'test-uuid')
+}))
+
 vi.mock('expo-router', async () => {
   const React = await import('react')
   return {
@@ -171,6 +175,7 @@ describe('accounts route Cursor usage', () => {
       }
     ])
     dependencies.snapshot.mockReturnValue(HOST_SNAPSHOT)
+    dependencies.sendRequest.mockResolvedValue({ ok: true, result: { capabilities: [] } })
   })
 
   afterEach(() => {
@@ -186,7 +191,8 @@ describe('accounts route Cursor usage', () => {
     expect(text).toContain('Grok Bot')
     expect(text).toContain('dev@example.com')
     expect(text).toContain('ultra · active')
-    expect(dependencies.sendRequest).not.toHaveBeenCalled()
+    const mutationCalls = dependencies.sendRequest.mock.calls.filter(([method]) => method !== 'status.get')
+    expect(mutationCalls).toHaveLength(0)
     act(() => renderer.unmount())
   })
 })

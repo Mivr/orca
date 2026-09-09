@@ -1,5 +1,4 @@
 import { RateLimitServiceFullCyclePreparation } from './service-full-cycle-preparation'
-import { deriveAntigravityRateLimits } from '../antigravity-usage-mirror'
 import type { ProviderRateLimits } from './service-types'
 import { providerResultFromSettled } from './service-settled-provider-result'
 
@@ -34,7 +33,8 @@ export abstract class RateLimitServiceFullCycleApplication extends RateLimitServ
         opencodeGoResult,
         kimiResult,
         miniMaxResult,
-        cursorResult
+        cursorResult,
+        antigravityResult
       ],
       grokResultPromise
     } = prepared
@@ -81,39 +81,11 @@ export abstract class RateLimitServiceFullCycleApplication extends RateLimitServ
             status: 'error'
           } satisfies ProviderRateLimits)
 
-    // Why: Antigravity can only borrow a *successful* Gemini read; a Gemini failure is not an Antigravity failure.
-    const antigravity = deriveAntigravityRateLimits(gemini)
-
-    const opencodeGo =
-      opencodeGoResult.status === 'fulfilled'
-        ? opencodeGoResult.value
-        : ({
-            provider: 'opencode-go',
-            session: null,
-            weekly: null,
-            monthly: null,
-            updatedAt: Date.now(),
-            error:
-              opencodeGoResult.reason instanceof Error
-                ? opencodeGoResult.reason.message
-                : 'Unknown error',
-            status: 'error'
-          } satisfies ProviderRateLimits)
-
-    const kimi =
-      kimiResult.status === 'fulfilled'
-        ? kimiResult.value
-        : ({
-            provider: 'kimi',
-            session: null,
-            weekly: null,
-            updatedAt: Date.now(),
-            error: kimiResult.reason instanceof Error ? kimiResult.reason.message : 'Unknown error',
-            status: 'error'
-          } satisfies ProviderRateLimits)
-
+    const opencodeGo = providerResultFromSettled('opencode-go', opencodeGoResult)
+    const kimi = providerResultFromSettled('kimi', kimiResult)
     const miniMax = providerResultFromSettled('minimax', miniMaxResult)
     const cursor = providerResultFromSettled('cursor', cursorResult)
+    const antigravity = providerResultFromSettled('antigravity', antigravityResult)
 
     const latestCodexHome = this.resolveCodexHome(codexTarget)
     const latestClaudeAuthPreparation = await this.claudeAuthPreparationResolver?.(claudeTarget)

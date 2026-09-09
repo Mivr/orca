@@ -8,6 +8,7 @@ import {
   getVisibleUsageProvider,
   hasUsageProviderSettings,
   hasUsageProviderSettingsForProvider,
+  isAntigravityStatusBarAvailable,
   isCursorStatusBarAvailable,
   isUsageEmptyState,
   isProviderConfigured,
@@ -147,6 +148,16 @@ describe('isCursorStatusBarAvailable', () => {
     expect(isCursorStatusBarAvailable(undefined, true)).toBe(true)
     expect(isCursorStatusBarAvailable(provider('ok', { provider: 'cursor' }), false)).toBe(true)
     expect(isCursorStatusBarAvailable(undefined, false)).toBe(false)
+  })
+})
+
+describe('isAntigravityStatusBarAvailable', () => {
+  it('uses desktop auth or a provider snapshot', () => {
+    expect(isAntigravityStatusBarAvailable(undefined, true)).toBe(true)
+    expect(
+      isAntigravityStatusBarAvailable(provider('ok', { provider: 'antigravity' }), false)
+    ).toBe(true)
+    expect(isAntigravityStatusBarAvailable(undefined, false)).toBe(false)
   })
 })
 

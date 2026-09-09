@@ -20,13 +20,6 @@ const RateLimitResetCreditSchema = z
   })
   .passthrough()
 
-const RateLimitBucketSchema = RateLimitWindowSchema.omit({ windowMinutes: true })
-  .extend({
-    name: z.string().min(1),
-    windowMinutes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional()
-  })
-  .passthrough()
-
 const RateLimitResetCreditsSchema = z
   .object({
     availableCount: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
@@ -61,7 +54,9 @@ export const ProviderRateLimitsSchema = z
     weekly: RateLimitWindowSchema.nullable(),
     fableWeekly: RateLimitWindowSchema.nullable().optional(),
     monthly: RateLimitWindowSchema.nullable().optional(),
-    buckets: z.array(RateLimitBucketSchema).optional(),
+    buckets: z
+      .array(RateLimitWindowSchema.extend({ name: z.string().min(1) }).passthrough())
+      .optional(),
     rateLimitResetCredits: RateLimitResetCreditsSchema.nullable().optional(),
     planType: z.string().min(1).nullable().optional(),
     usageMetadata: UsageRateLimitMetadataSchema.optional(),
@@ -190,11 +185,11 @@ export const AccountsSnapshotSchema = z
       .object({
         claude: ProviderRateLimitsSchema.nullable(),
         codex: ProviderRateLimitsSchema.nullable(),
-        // Why: older hosts omit Cursor entirely; keep the field optional so
-        // mixed-version clients continue to decode their snapshots.
-        cursor: ProviderRateLimitsSchema.nullable().optional(),
-        // Why: old hosts omit Grok; optional decoding keeps mixed versions compatible.
+        // Why: older hosts omitted these; decode them as first-class when present
+        // so paired clients can show Cursor buckets and Grok reset tokens.
         grok: ProviderRateLimitsSchema.nullable().optional(),
+        cursor: ProviderRateLimitsSchema.nullable().optional(),
+        antigravity: ProviderRateLimitsSchema.nullable().optional(),
         // Why: protocol-compatible hosts from before runtime targeting omit
         // these fields; their account selection semantics were host-only.
         claudeTarget: RateLimitRuntimeTargetSchema.default(HostRateLimitRuntimeTarget),
@@ -220,6 +215,13 @@ export const AccountsSnapshotSchema = z
         path: ['rateLimits', 'codex', 'provider']
       })
     }
+    if (snapshot.rateLimits.grok && snapshot.rateLimits.grok.provider !== 'grok') {
+      context.addIssue({
+        code: 'custom',
+        message: 'Grok limits use the wrong provider identity',
+        path: ['rateLimits', 'grok', 'provider']
+      })
+    }
     if (snapshot.rateLimits.cursor && snapshot.rateLimits.cursor.provider !== 'cursor') {
       context.addIssue({
         code: 'custom',
@@ -227,11 +229,11 @@ export const AccountsSnapshotSchema = z
         path: ['rateLimits', 'cursor', 'provider']
       })
     }
-    if (snapshot.rateLimits.grok && snapshot.rateLimits.grok.provider !== 'grok') {
+    if (snapshot.rateLimits.antigravity && snapshot.rateLimits.antigravity.provider !== 'antigravity') {
       context.addIssue({
         code: 'custom',
-        message: 'Grok limits use the wrong provider identity',
-        path: ['rateLimits', 'grok', 'provider']
+        message: 'Antigravity limits use the wrong provider identity',
+        path: ['rateLimits', 'antigravity', 'provider']
       })
     }
     for (const [index, entry] of snapshot.rateLimits.inactiveClaudeAccounts.entries()) {

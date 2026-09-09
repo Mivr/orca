@@ -10,6 +10,8 @@ import { fetchGrokRateLimits } from './grok-fetcher'
 import { readGrokAuthSession } from './grok-auth'
 import { fetchCursorRateLimits } from './cursor-fetcher'
 import { readCursorAuthSession } from './cursor-auth'
+import { fetchAntigravityRateLimits } from './antigravity-fetcher'
+import { readAntigravityAuthSession } from './antigravity-auth'
 import { fetchOpenCodeGoRateLimits } from './opencode-go-usage-fetcher'
 import { hasMiniMaxSessionCookie } from '../minimax/minimax-cookie-store'
 
@@ -89,30 +91,65 @@ export function mockFreshBackgroundProviderFetches(): void {
   vi.mocked(fetchGeminiRateLimits).mockImplementation(async () => okProvider('gemini', 0))
   vi.mocked(fetchOpenCodeGoRateLimits).mockImplementation(async () => okProvider('opencode-go', 0))
   vi.mocked(fetchKimiRateLimits).mockImplementation(async () => okProvider('kimi', 0))
-  vi.mocked(fetchMiniMaxRateLimits).mockImplementation(async () => okProvider('minimax', 0))
-  vi.mocked(fetchGrokRateLimits).mockImplementation(async () => unavailableProvider('grok'))
-  vi.mocked(fetchCursorRateLimits).mockImplementation(async () => unavailableProvider('cursor'))
+  if (vi.isMockFunction(fetchMiniMaxRateLimits)) {
+    vi.mocked(fetchMiniMaxRateLimits).mockImplementation(async () => okProvider('minimax', 0))
+  }
+  if (vi.isMockFunction(fetchGrokRateLimits)) {
+    vi.mocked(fetchGrokRateLimits).mockImplementation(async () => unavailableProvider('grok'))
+  }
+  if (vi.isMockFunction(fetchCursorRateLimits)) {
+    vi.mocked(fetchCursorRateLimits).mockImplementation(async () => unavailableProvider('cursor'))
+  }
+  if (vi.isMockFunction(fetchAntigravityRateLimits)) {
+    vi.mocked(fetchAntigravityRateLimits).mockImplementation(
+      async () => unavailableProvider('antigravity')
+    )
+  }
 }
 
 /** Shared `beforeEach` body: healthy stubs for every provider the service polls. */
 export function resetRateLimitProviderMocks(): void {
   vi.clearAllMocks()
-  vi.mocked(fetchGeminiRateLimits).mockResolvedValue(okProvider('gemini', 0, Date.now()))
-  vi.mocked(fetchOpenCodeGoRateLimits).mockResolvedValue(okProvider('opencode-go', 0, Date.now()))
-  vi.mocked(fetchKimiRateLimits).mockResolvedValue(okProvider('kimi', 0, Date.now()))
-  vi.mocked(fetchMiniMaxRateLimits).mockResolvedValue(okProvider('minimax', 0, Date.now()))
-  vi.mocked(fetchGrokRateLimits).mockResolvedValue({
-    provider: 'grok',
-    session: null,
-    weekly: null,
-    updatedAt: Date.now(),
-    error: null,
-    status: 'unavailable'
-  })
-  vi.mocked(fetchCursorRateLimits).mockResolvedValue(unavailableProvider('cursor'))
-  vi.mocked(hasMiniMaxSessionCookie).mockReturnValue(false)
-  vi.mocked(readGrokAuthSession).mockReturnValue({ status: 'missing' })
-  vi.mocked(readCursorAuthSession).mockReturnValue({ status: 'missing' })
+  if (vi.isMockFunction(fetchGeminiRateLimits)) {
+    vi.mocked(fetchGeminiRateLimits).mockResolvedValue(okProvider('gemini', 0, Date.now()))
+  }
+  if (vi.isMockFunction(fetchOpenCodeGoRateLimits)) {
+    vi.mocked(fetchOpenCodeGoRateLimits).mockResolvedValue(okProvider('opencode-go', 0, Date.now()))
+  }
+  if (vi.isMockFunction(fetchKimiRateLimits)) {
+    vi.mocked(fetchKimiRateLimits).mockResolvedValue(okProvider('kimi', 0, Date.now()))
+  }
+  if (vi.isMockFunction(fetchMiniMaxRateLimits)) {
+    vi.mocked(fetchMiniMaxRateLimits).mockResolvedValue(okProvider('minimax', 0, Date.now()))
+  }
+  if (vi.isMockFunction(fetchGrokRateLimits)) {
+    vi.mocked(fetchGrokRateLimits).mockResolvedValue({
+      provider: 'grok',
+      session: null,
+      weekly: null,
+      updatedAt: Date.now(),
+      error: null,
+      status: 'unavailable'
+    })
+  }
+  if (vi.isMockFunction(fetchCursorRateLimits)) {
+    vi.mocked(fetchCursorRateLimits).mockResolvedValue(unavailableProvider('cursor'))
+  }
+  if (vi.isMockFunction(fetchAntigravityRateLimits)) {
+    vi.mocked(fetchAntigravityRateLimits).mockResolvedValue(unavailableProvider('antigravity'))
+  }
+  if (vi.isMockFunction(hasMiniMaxSessionCookie)) {
+    vi.mocked(hasMiniMaxSessionCookie).mockReturnValue(false)
+  }
+  if (vi.isMockFunction(readGrokAuthSession)) {
+    vi.mocked(readGrokAuthSession).mockReturnValue({ status: 'missing' })
+  }
+  if (vi.isMockFunction(readCursorAuthSession)) {
+    vi.mocked(readCursorAuthSession).mockReturnValue({ status: 'missing' })
+  }
+  if (vi.isMockFunction(readAntigravityAuthSession)) {
+    vi.mocked(readAntigravityAuthSession).mockReturnValue({ status: 'missing' })
+  }
 }
 
 type RateLimitWindow = Parameters<RateLimitService['attach']>[0]

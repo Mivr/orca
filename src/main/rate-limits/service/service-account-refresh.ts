@@ -31,6 +31,11 @@ export abstract class RateLimitServiceAccountRefresh extends RateLimitServiceIna
     return this.getState()
   }
 
+  async refreshAntigravity(): Promise<RateLimitState> {
+    await this.fetchAntigravityOnly({ force: true })
+    return this.getState()
+  }
+
   invalidateMiniMaxCredentialState(): void {
     this.minimaxFetchGeneration += 1
     // Why: saving/forgetting the cookie can race an in-flight fetch; clear the visible snapshot before any old-cookie result returns.

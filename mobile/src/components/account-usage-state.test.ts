@@ -54,7 +54,10 @@ function makeSnapshot(
       claudeTarget: { runtime: 'host', wslDistro: null },
       codexTarget: { runtime: 'host', wslDistro: null },
       inactiveClaudeAccounts: overrides.inactiveClaudeAccounts ?? [],
-      inactiveCodexAccounts: overrides.inactiveCodexAccounts ?? []
+      inactiveCodexAccounts: overrides.inactiveCodexAccounts ?? [],
+      grok: null,
+      cursor: null,
+      antigravity: null
     }
   }
 }
@@ -128,18 +131,6 @@ describe('getInactiveProviderUsage', () => {
     })
 
     expect(getInactiveProviderUsage(snapshot, 'claude', 'account-1')?.rateLimits).toBe(limits)
-  })
-})
-
-describe('getHostProviderRateLimits', () => {
-  it('reads the optional Grok slot and tolerates an old-host omission', () => {
-    const oldHost = makeSnapshot()
-    expect(getHostProviderRateLimits(oldHost, 'grok')).toBeNull()
-
-    const grok = makeLimits({ provider: 'grok', status: 'ok' })
-    const newHost = makeSnapshot()
-    newHost.rateLimits.grok = grok
-    expect(getHostProviderRateLimits(newHost, 'grok')).toBe(grok)
   })
 })
 
@@ -225,8 +216,13 @@ describe('getUsageBarState', () => {
   })
 })
 
-describe('Cursor bucket usage', () => {
-  it('reads the optional Cursor rate-limit slot from a host snapshot', () => {
+describe('host provider Cursor/Grok extras', () => {
+  it('reads first-class grok and cursor rate-limit slots from the snapshot', () => {
+    const grok = makeLimits({
+      provider: 'grok',
+      status: 'ok',
+      weekly: { usedPercent: 13, windowMinutes: 10_080, resetsAt: 1, resetDescription: 'Thu' }
+    })
     const cursor = makeLimits({
       provider: 'cursor',
       status: 'ok',
@@ -236,42 +232,98 @@ describe('Cursor bucket usage', () => {
           usedPercent: 41,
           windowMinutes: 43_200,
           resetsAt: 2,
-          resetDescription: 'Sep 30'
+          resetDescription: 'Aug 27'
         }
       ]
     })
-    const base = makeSnapshot()
-    const snapshot: AccountsSnapshot = {
-      ...base,
-      rateLimits: { ...base.rateLimits, cursor }
+    const antigravity = makeLimits({
+      provider: 'antigravity',
+      status: 'ok',
+      buckets: [
+        {
+          name: 'Gemini 7d',
+          usedPercent: 25,
+          windowMinutes: 10_080,
+          resetsAt: 3,
+          resetDescription: '7d'
+        }
+      ]
+    })
+    const snapshot = {
+      ...makeSnapshot(),
+      rateLimits: {
+        ...makeSnapshot().rateLimits,
+        grok,
+        cursor,
+        antigravity
+      }
     }
 
+    expect(getHostProviderRateLimits(snapshot, 'grok')).toBe(grok)
     expect(getHostProviderRateLimits(snapshot, 'cursor')).toBe(cursor)
+    expect(getHostProviderRateLimits(snapshot, 'antigravity')).toBe(antigravity)
   })
 
-  it('maps named pools to bar and reset state without inventing missing pools', () => {
-    const now = Date.parse('2026-09-01T12:00:00Z')
+  it('maps named Cursor buckets to the same bar/reset helpers as session windows', () => {
+    const now = Date.parse('2026-08-27T12:00:00Z')
     const limits = makeLimits({
       provider: 'cursor',
       status: 'ok',
       buckets: [
         {
           name: 'Grok Bot',
-          usedPercent: 12,
+          usedPercent: 0,
           windowMinutes: 10_080,
           resetsAt: now + 4 * 24 * 60 * 60_000,
-          resetDescription: null
+          resetDescription: 'Aug 31'
         }
       ]
     })
 
     expect(getBucketUsageBarState(limits, 'Grok Bot')).toEqual({
-      usedPercent: 12,
+      usedPercent: 0,
       unavailable: false,
       loading: false
     })
     expect(getBucketResetLabel(limits, 'Grok Bot', now)).toBe('Resets in 4d')
     expect(getBucketUsageBarState(limits, 'Cursor Models')).toEqual({
+      usedPercent: null,
+      unavailable: true,
+      loading: false
+    })
+  })
+
+  it('maps named Antigravity buckets to the same bar/reset helpers', () => {
+    const now = Date.parse('2026-08-27T12:00:00Z')
+    const limits = makeLimits({
+      provider: 'antigravity',
+      status: 'ok',
+      buckets: [
+        {
+          name: 'Gemini 7d',
+          usedPercent: 12,
+          windowMinutes: 10_080,
+          resetsAt: now + 6 * 24 * 60 * 60_000,
+          resetDescription: '7d'
+        },
+        {
+          name: 'Gemini 5h',
+          usedPercent: 40,
+          windowMinutes: 300,
+          resetsAt: now + 2 * 60 * 60_000,
+          resetDescription: '5h'
+        }
+      ]
+    })
+
+    expect(getBucketUsageBarState(limits, 'Gemini 7d')).toEqual({
+      usedPercent: 12,
+      unavailable: false,
+      loading: false
+    })
+    expect(getBucketResetLabel(limits, 'Gemini 7d', now)).toBe('Resets in 6d')
+    expect(getBucketResetLabel(limits, 'Gemini 5h', now)).toBe('Resets in 2h')
+    expect(getBucketUsageBarState(limits, 'Frontier 7d')).toEqual({
       usedPercent: null,
       unavailable: true,
       loading: false

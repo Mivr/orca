@@ -3,6 +3,8 @@ import { fetchClaudeRateLimits } from '../claude-fetcher'
 import { fetchCodexRateLimits } from '../codex-fetcher'
 import { fetchGrokRateLimits } from '../grok-fetcher'
 import { readGrokAuthSession } from '../grok-auth'
+import { fetchAntigravityRateLimits } from '../antigravity-fetcher'
+import { readAntigravityAuthSession } from '../antigravity-auth'
 import type { ProviderRateLimits } from './service-types'
 
 export abstract class RateLimitServiceProviderCycles extends RateLimitServiceFullCycleApplication {
@@ -180,6 +182,44 @@ export abstract class RateLimitServiceProviderCycles extends RateLimitServiceFul
     this.updateState({
       ...this.state,
       grok: this.applyStalePolicy(grok, previousState.grok)
+    })
+  }
+
+  protected async runFetchAntigravityOnlyCycle(signal: AbortSignal): Promise<void> {
+    if (signal.aborted) {
+      return
+    }
+    const previousState = this.state
+    const antigravityAuthReadResult = readAntigravityAuthSession()
+    this.antigravityAuthConfigured = antigravityAuthReadResult.status === 'ok'
+
+    this.updateState({
+      ...previousState,
+      antigravity: this.withFetchingStatus(previousState.antigravity, 'antigravity')
+    })
+
+    const antigravity = await fetchAntigravityRateLimits({
+      signal,
+      authReadResult: antigravityAuthReadResult
+    }).catch(
+      (err): ProviderRateLimits => ({
+        provider: 'antigravity',
+        session: null,
+        weekly: null,
+        updatedAt: Date.now(),
+        error: err instanceof Error ? err.message : 'Unknown error',
+        status: 'error'
+      })
+    )
+
+    if (signal.aborted) {
+      return
+    }
+
+    this.trackActiveFailureStreak('antigravity', antigravity)
+    this.updateState({
+      ...this.state,
+      antigravity: this.applyStalePolicy(antigravity, previousState.antigravity)
     })
   }
 }

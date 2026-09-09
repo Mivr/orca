@@ -5,6 +5,8 @@ import { fetchGrokRateLimits } from '../grok-fetcher'
 import { readGrokAuthSession } from '../grok-auth'
 import { fetchCursorRateLimits } from '../cursor-fetcher'
 import { readCursorAuthSession } from '../cursor-auth'
+import { fetchAntigravityRateLimits } from '../antigravity-fetcher'
+import { readAntigravityAuthSession } from '../antigravity-auth'
 import { fetchMiniMaxRateLimits } from '../minimax/minimax-fetcher'
 import { fetchOpenCodeGoRateLimits } from '../opencode-go-usage-fetcher'
 import { RateLimitServiceFetchPolicy } from './service-fetch-policy'
@@ -33,6 +35,7 @@ export type FetchAllCyclePrepared = {
   miniMaxGeneration: number
   claudeFetchGated: boolean
   results: [
+    PromiseSettledResult<ProviderRateLimits>,
     PromiseSettledResult<ProviderRateLimits>,
     PromiseSettledResult<ProviderRateLimits>,
     PromiseSettledResult<ProviderRateLimits>,
@@ -91,6 +94,8 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
     this.grokAuthConfigured = grokAuthReadResult.status === 'ok'
     const cursorAuthReadResult = readCursorAuthSession()
     this.cursorAuthConfigured = cursorAuthReadResult.status === 'ok'
+    const antigravityAuthReadResult = readAntigravityAuthSession()
+    this.antigravityAuthConfigured = antigravityAuthReadResult.status === 'ok'
 
     // Discard stale data on config change — it belongs to a different session/workspace.
     const currentConfigHash = `${cookie}|${workspaceIdOverride}`
@@ -153,7 +158,8 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
       opencodeGoResult,
       kimiResult,
       miniMaxResult,
-      cursorResult
+      cursorResult,
+      antigravityResult
     ] = await Promise.allSettled([
         claudeFetchGated
           ? Promise.resolve(previousState.claude as ProviderRateLimits)
@@ -188,7 +194,8 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
               endpointMode: miniMaxEndpoint,
               apiKey: miniMaxApiKey
             }),
-        fetchCursorRateLimits({ signal, authReadResult: cursorAuthReadResult })
+        fetchCursorRateLimits({ signal, authReadResult: cursorAuthReadResult }),
+        fetchAntigravityRateLimits({ signal, authReadResult: antigravityAuthReadResult })
       ])
 
     if (signal.aborted) {
@@ -217,7 +224,8 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
         opencodeGoResult,
         kimiResult,
         miniMaxResult,
-        cursorResult
+        cursorResult,
+        antigravityResult
       ],
       grokResultPromise
     }
