@@ -237,7 +237,7 @@ export function mapLiveQuotaSummaryToBuckets(summary: LiveQuotaSummaryResponse):
     buckets.push(b)
     weeklyWindow = {
       usedPercent: b.usedPercent,
-      windowMinutes: b.windowMinutes,
+      windowMinutes: SEVEN_DAY_WINDOW_MINUTES,
       resetsAt: b.resetsAt,
       resetDescription: b.resetDescription
     }
@@ -259,7 +259,7 @@ export function mapLiveQuotaSummaryToBuckets(summary: LiveQuotaSummaryResponse):
     buckets.push(b)
     sessionWindow = {
       usedPercent: b.usedPercent,
-      windowMinutes: b.windowMinutes,
+      windowMinutes: FIVE_HOUR_WINDOW_MINUTES,
       resetsAt: b.resetsAt,
       resetDescription: b.resetDescription
     }
