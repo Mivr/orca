@@ -49,3 +49,23 @@ export function formatRateLimitWindowChipLabel(
   }
   return formatWindowLabel(window.windowMinutes)
 }
+
+/**
+ * Shortens rate-limit bucket names for compact status-bar and roster presentation.
+ *
+ * Why: Full bucket names like "Cursor Models", "Other Models", or "Grok Bot"
+ * consume too much horizontal space in the bottom bar alongside the provider icon.
+ */
+export function formatStatusBarBucketName(name: string, provider?: string): string {
+  if (provider === 'cursor') {
+    if (name === 'Cursor Models') return 'Models'
+    if (name === 'Other Models') return 'Other'
+    if (name === 'Grok Bot') return 'Grok'
+    if (name.startsWith('Cursor ')) return name.slice(7)
+  }
+  if (name === 'Cursor Models') return 'Models'
+  if (name === 'Other Models') return 'Other'
+  if (name === 'Grok Bot') return 'Grok'
+  return name
+}
+
