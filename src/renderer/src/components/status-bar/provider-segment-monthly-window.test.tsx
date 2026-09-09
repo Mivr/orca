@@ -257,8 +257,8 @@ describe('ProviderSegment monthly window', () => {
       <ProviderSegment p={limits} compact={false} display="used" mode="verbose" />
     )
 
-    expect(markup).toContain('Gemini 5h 40% used 2h')
-    expect(markup).toContain('Gemini 7d 12% used 6d')
+    expect(markup).toContain('5h 40% used 2h')
+    expect(markup).toContain('7d 12% used 6d')
   })
 
   it('shows Cursor tightest bucket with shortened label and time left in compact mode', async () => {
@@ -307,7 +307,8 @@ describe('ProviderSegment monthly window', () => {
       <ProviderSegment p={limits} compact={false} display="used" mode="compact" />
     )
 
-    expect(markup).toContain('40% used Gemini 5h 2h')
+    expect(markup).toContain('40% used 2h')
+    expect(markup).not.toContain('5h 2h')
   })
 })
 
