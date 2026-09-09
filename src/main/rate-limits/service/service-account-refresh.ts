@@ -30,6 +30,11 @@ export abstract class RateLimitServiceAccountRefresh extends RateLimitServiceIna
     return this.getState()
   }
 
+  async refreshAntigravity(): Promise<RateLimitState> {
+    await this.fetchAntigravityOnly({ force: true })
+    return this.getState()
+  }
+
   async consumeGrokRateLimitResetCredit(): Promise<CodexRateLimitResetResult> {
     const weeklyUsed = this.state.grok?.weekly?.usedPercent ?? 0
     // Why: SuperGrok reset tokens are one-time; spending one at 0% weekly would

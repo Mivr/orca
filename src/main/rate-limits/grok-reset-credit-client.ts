@@ -75,7 +75,7 @@ async function postGrokRpc(
   const response = await request(url, {
     method: 'POST',
     headers: grokRpcHeaders(session),
-    body: encodeGrpcWebRequest(payload),
+    body: encodeGrpcWebRequest(payload) as unknown as BodyInit,
     signal
   })
   if (!response.ok) {

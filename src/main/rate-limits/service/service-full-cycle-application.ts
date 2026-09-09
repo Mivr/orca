@@ -1,5 +1,4 @@
 import { RateLimitServiceFullCyclePreparation } from './service-full-cycle-preparation'
-import { deriveAntigravityRateLimits } from '../antigravity-usage-mirror'
 import type { ProviderRateLimits } from './service-types'
 
 export abstract class RateLimitServiceFullCycleApplication extends RateLimitServiceFullCyclePreparation {
@@ -33,7 +32,8 @@ export abstract class RateLimitServiceFullCycleApplication extends RateLimitServ
         opencodeGoResult,
         kimiResult,
         miniMaxResult,
-        cursorResult
+        cursorResult,
+        antigravityResult
       ],
       grokResultPromise
     } = prepared
@@ -80,8 +80,20 @@ export abstract class RateLimitServiceFullCycleApplication extends RateLimitServ
             status: 'error'
           } satisfies ProviderRateLimits)
 
-    // Why: Antigravity can only borrow a *successful* Gemini read; a Gemini failure is not an Antigravity failure.
-    const antigravity = deriveAntigravityRateLimits(gemini)
+    const antigravity =
+      antigravityResult.status === 'fulfilled'
+        ? antigravityResult.value
+        : ({
+            provider: 'antigravity',
+            session: null,
+            weekly: null,
+            updatedAt: Date.now(),
+            error:
+              antigravityResult.reason instanceof Error
+                ? antigravityResult.reason.message
+                : 'Unknown error',
+            status: 'error'
+          } satisfies ProviderRateLimits)
 
     const opencodeGo =
       opencodeGoResult.status === 'fulfilled'

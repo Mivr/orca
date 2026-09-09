@@ -56,6 +56,7 @@ export function HostUsageSections({
         onConfirmGrokReset={confirmReset}
       />
       <CursorHostSection snapshot={snapshot} now={now} />
+      <AntigravityHostSection snapshot={snapshot} now={now} />
     </>
   )
 }
@@ -162,6 +163,61 @@ function CursorHostSection({
             ) : (
               <Text style={styles.rowSubtitle}>Uses Cursor on the host</Text>
             )}
+            {buckets.map((bucket) => {
+              const bar = getBucketUsageBarState(usage, bucket.name)
+              return (
+                <View key={bucket.name} style={styles.usageRow}>
+                  <UsageBar
+                    label={bucket.name}
+                    labelWidth={92}
+                    usedPercent={bar.usedPercent}
+                    unavailable={bar.unavailable}
+                    loading={bar.loading}
+                    resetText={
+                      bucket.resetDescription
+                        ? `Resets ${bucket.resetDescription}`
+                        : getBucketResetLabel(usage, bucket.name, now)
+                    }
+                  />
+                </View>
+              )
+            })}
+          </View>
+        </View>
+      </View>
+    </View>
+  )
+}
+
+function AntigravityHostSection({
+  snapshot,
+  now
+}: {
+  snapshot: AccountsSnapshot
+  now: number
+}): React.JSX.Element | null {
+  const usage = getHostProviderRateLimits(snapshot, 'antigravity')
+  if (!hasActiveProviderUsage(usage) && !usage?.buckets?.length) {
+    return null
+  }
+  const email = usage?.usageMetadata?.accountEmail ?? null
+  const planLabel = usage?.planType ?? usage?.usageMetadata?.subscriptionStatus ?? 'Google AI Ultra'
+  const buckets = usage?.buckets ?? []
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <MobileAgentIcon agentId="antigravity" size={14} />
+        <Text style={styles.sectionHeading}>Antigravity</Text>
+      </View>
+      <View style={styles.card}>
+        <View style={styles.row}>
+          <View style={styles.rowMain}>
+            <Text style={styles.rowTitle} numberOfLines={1}>
+              {email ?? 'Google AI subscription'}
+            </Text>
+            <Text style={styles.rowSubtitle} numberOfLines={1}>
+              {planLabel}
+            </Text>
             {buckets.map((bucket) => {
               const bar = getBucketUsageBarState(usage, bucket.name)
               return (

@@ -31,11 +31,13 @@ function makeService(): {
   service: RateLimitService
   refresh: ReturnType<typeof vi.fn>
   refreshGrok: ReturnType<typeof vi.fn>
+  refreshAntigravity: ReturnType<typeof vi.fn>
   consumeCodexRateLimitResetCredit: ReturnType<typeof vi.fn>
   consumeGrokRateLimitResetCredit: ReturnType<typeof vi.fn>
 } {
   const refresh = vi.fn(() => Promise.resolve({} as RateLimitState))
   const refreshGrok = vi.fn(() => Promise.resolve({} as RateLimitState))
+  const refreshAntigravity = vi.fn(() => Promise.resolve({} as RateLimitState))
   const consumeCodexRateLimitResetCredit = vi.fn(() =>
     Promise.resolve({ outcome: 'noCredit', state: {} as RateLimitState })
   )
@@ -46,6 +48,7 @@ function makeService(): {
     getState: vi.fn(() => ({}) as RateLimitState),
     refresh,
     refreshGrok,
+    refreshAntigravity,
     refreshCodexForTarget: vi.fn(() => Promise.resolve({} as RateLimitState)),
     refreshClaudeForTarget: vi.fn(() => Promise.resolve({} as RateLimitState)),
     consumeCodexRateLimitResetCredit,
@@ -58,6 +61,7 @@ function makeService(): {
     service: service as unknown as RateLimitService,
     refresh,
     refreshGrok,
+    refreshAntigravity,
     consumeCodexRateLimitResetCredit,
     consumeGrokRateLimitResetCredit
   }
@@ -84,6 +88,7 @@ describe('registerRateLimitHandlers', () => {
     expect(ipcState.handleHandlers.has('rateLimits:refresh')).toBe(true)
     expect(ipcState.handleHandlers.has('rateLimits:refreshMiniMax')).toBe(true)
     expect(ipcState.handleHandlers.has('rateLimits:refreshGrok')).toBe(true)
+    expect(ipcState.handleHandlers.has('rateLimits:refreshAntigravity')).toBe(true)
   })
 
   it('registers a refreshGrok channel that delegates to refreshGrok()', async () => {
@@ -93,6 +98,15 @@ describe('registerRateLimitHandlers', () => {
     expect(handler).toBeDefined()
     await handler!({})
     expect(refreshGrok).toHaveBeenCalledTimes(1)
+  })
+
+  it('registers a refreshAntigravity channel that delegates to refreshAntigravity()', async () => {
+    const { service, refreshAntigravity } = makeService()
+    registerRateLimitHandlers(service, makeCodexAccounts().service)
+    const handler = ipcState.handleHandlers.get('rateLimits:refreshAntigravity')
+    expect(handler).toBeDefined()
+    await handler!({})
+    expect(refreshAntigravity).toHaveBeenCalledTimes(1)
   })
 
   it('serializes desktop reset consumption through CodexAccountService', async () => {

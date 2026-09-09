@@ -30,6 +30,7 @@ export function registerRateLimitHandlers(
   )
   ipcMain.handle('rateLimits:refreshMiniMax', () => rateLimits.refresh())
   ipcMain.handle('rateLimits:refreshGrok', () => rateLimits.refreshGrok())
+  ipcMain.handle('rateLimits:refreshAntigravity', () => rateLimits.refreshAntigravity())
   ipcMain.handle('rateLimits:consumeGrokResetCredit', () =>
     rateLimits.consumeGrokRateLimitResetCredit()
   )

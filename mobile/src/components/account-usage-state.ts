@@ -27,7 +27,7 @@ export {
 } from './accounts-snapshot'
 
 export type ProviderKey = 'claude' | 'codex'
-export type HostUsageProviderKey = 'grok' | 'cursor'
+export type HostUsageProviderKey = 'grok' | 'cursor' | 'antigravity'
 
 export type UsageBarState = {
   usedPercent: number | null

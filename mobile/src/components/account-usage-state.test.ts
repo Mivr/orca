@@ -56,7 +56,8 @@ function makeSnapshot(
       inactiveClaudeAccounts: overrides.inactiveClaudeAccounts ?? [],
       inactiveCodexAccounts: overrides.inactiveCodexAccounts ?? [],
       grok: null,
-      cursor: null
+      cursor: null,
+      antigravity: null
     }
   }
 }
@@ -235,17 +236,32 @@ describe('host provider Cursor/Grok extras', () => {
         }
       ]
     })
+    const antigravity = makeLimits({
+      provider: 'antigravity',
+      status: 'ok',
+      buckets: [
+        {
+          name: 'Gemini 7d',
+          usedPercent: 25,
+          windowMinutes: 10_080,
+          resetsAt: 3,
+          resetDescription: '7d'
+        }
+      ]
+    })
     const snapshot = {
       ...makeSnapshot(),
       rateLimits: {
         ...makeSnapshot().rateLimits,
         grok,
-        cursor
+        cursor,
+        antigravity
       }
     }
 
     expect(getHostProviderRateLimits(snapshot, 'grok')).toBe(grok)
     expect(getHostProviderRateLimits(snapshot, 'cursor')).toBe(cursor)
+    expect(getHostProviderRateLimits(snapshot, 'antigravity')).toBe(antigravity)
   })
 
   it('maps named Cursor buckets to the same bar/reset helpers as session windows', () => {
@@ -271,6 +287,43 @@ describe('host provider Cursor/Grok extras', () => {
     })
     expect(getBucketResetLabel(limits, 'Grok Bot', now)).toBe('Resets in 4d')
     expect(getBucketUsageBarState(limits, 'Cursor Models')).toEqual({
+      usedPercent: null,
+      unavailable: true,
+      loading: false
+    })
+  })
+
+  it('maps named Antigravity buckets to the same bar/reset helpers', () => {
+    const now = Date.parse('2026-08-27T12:00:00Z')
+    const limits = makeLimits({
+      provider: 'antigravity',
+      status: 'ok',
+      buckets: [
+        {
+          name: 'Gemini 7d',
+          usedPercent: 12,
+          windowMinutes: 10_080,
+          resetsAt: now + 6 * 24 * 60 * 60_000,
+          resetDescription: '7d'
+        },
+        {
+          name: 'Gemini 5h',
+          usedPercent: 40,
+          windowMinutes: 300,
+          resetsAt: now + 2 * 60 * 60_000,
+          resetDescription: '5h'
+        }
+      ]
+    })
+
+    expect(getBucketUsageBarState(limits, 'Gemini 7d')).toEqual({
+      usedPercent: 12,
+      unavailable: false,
+      loading: false
+    })
+    expect(getBucketResetLabel(limits, 'Gemini 7d', now)).toBe('Resets in 6d')
+    expect(getBucketResetLabel(limits, 'Gemini 5h', now)).toBe('Resets in 2h')
+    expect(getBucketUsageBarState(limits, 'Frontier 7d')).toEqual({
       usedPercent: null,
       unavailable: true,
       loading: false

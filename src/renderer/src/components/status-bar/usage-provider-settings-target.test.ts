@@ -6,10 +6,11 @@ describe('getUsageProviderAccountsSectionId', () => {
     expect(getUsageProviderAccountsSectionId('claude')).toBe('accounts-claude')
     expect(getUsageProviderAccountsSectionId('codex')).toBe('accounts-codex')
     expect(getUsageProviderAccountsSectionId('gemini')).toBe('accounts-gemini')
-    expect(getUsageProviderAccountsSectionId('antigravity')).toBe('accounts-gemini')
+    expect(getUsageProviderAccountsSectionId('antigravity')).toBe('accounts-antigravity')
     expect(getUsageProviderAccountsSectionId('opencode-go')).toBe('accounts-opencode-go')
     expect(getUsageProviderAccountsSectionId('minimax')).toBe('accounts-minimax')
     expect(getUsageProviderAccountsSectionId('grok')).toBe('accounts-grok')
+    expect(getUsageProviderAccountsSectionId('cursor')).toBe('accounts-cursor')
   })
 
   it('does not invent an Accounts section for CLI-owned Kimi credentials', () => {

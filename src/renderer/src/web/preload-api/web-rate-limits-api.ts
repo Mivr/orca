@@ -17,6 +17,7 @@ export function createRateLimitsApi(): NonNullable<Partial<PreloadApi>['rateLimi
     fetchInactiveCodexAccounts: () => Promise.resolve(),
     refreshMiniMax: () => Promise.resolve(empty),
     refreshGrok: () => Promise.resolve(empty),
+    refreshAntigravity: () => Promise.resolve(empty),
     onUpdate: () => noopUnsubscribe
   }
 }

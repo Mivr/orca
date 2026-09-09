@@ -189,6 +189,7 @@ export const AccountsSnapshotSchema = z
         // so paired clients can show Cursor buckets and Grok reset tokens.
         grok: ProviderRateLimitsSchema.nullable().optional(),
         cursor: ProviderRateLimitsSchema.nullable().optional(),
+        antigravity: ProviderRateLimitsSchema.nullable().optional(),
         // Why: protocol-compatible hosts from before runtime targeting omit
         // these fields; their account selection semantics were host-only.
         claudeTarget: RateLimitRuntimeTargetSchema.default(HostRateLimitRuntimeTarget),
@@ -226,6 +227,13 @@ export const AccountsSnapshotSchema = z
         code: 'custom',
         message: 'Cursor limits use the wrong provider identity',
         path: ['rateLimits', 'cursor', 'provider']
+      })
+    }
+    if (snapshot.rateLimits.antigravity && snapshot.rateLimits.antigravity.provider !== 'antigravity') {
+      context.addIssue({
+        code: 'custom',
+        message: 'Antigravity limits use the wrong provider identity',
+        path: ['rateLimits', 'antigravity', 'provider']
       })
     }
     for (const [index, entry] of snapshot.rateLimits.inactiveClaudeAccounts.entries()) {

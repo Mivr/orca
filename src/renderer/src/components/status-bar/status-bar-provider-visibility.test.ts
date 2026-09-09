@@ -73,9 +73,11 @@ function usageSettings(overrides: Partial<UsageProviderSettings> = {}): UsagePro
     opencodeSessionCookie: '',
     geminiCliOAuthEnabled: false,
     antigravityUsageConfigured: false,
+    antigravityAuthConfigured: false,
     minimaxCookieConfigured: false,
     minimaxApiKeyConfigured: false,
     grokAuthConfigured: false,
+    cursorAuthConfigured: false,
     ...overrides
   }
 }
@@ -223,6 +225,29 @@ describe('hasUsageProviderSettingsForProvider', () => {
     ).toBe(true)
     expect(hasUsageProviderSettingsForProvider('grok', usageSettings())).toBe(false)
     expect(hasUsageProviderSettingsForProvider('grok', null)).toBe(false)
+  })
+
+  it('treats cursorAuthConfigured as the durable signal for Cursor', () => {
+    expect(
+      hasUsageProviderSettingsForProvider('cursor', usageSettings({ cursorAuthConfigured: true }))
+    ).toBe(true)
+    expect(hasUsageProviderSettingsForProvider('cursor', usageSettings())).toBe(false)
+  })
+
+  it('treats antigravityAuthConfigured as the durable signal for Antigravity', () => {
+    expect(
+      hasUsageProviderSettingsForProvider(
+        'antigravity',
+        usageSettings({ antigravityAuthConfigured: true })
+      )
+    ).toBe(true)
+    expect(
+      hasUsageProviderSettingsForProvider(
+        'antigravity',
+        usageSettings({ antigravityUsageConfigured: true, geminiCliOAuthEnabled: true })
+      )
+    ).toBe(true)
+    expect(hasUsageProviderSettingsForProvider('antigravity', usageSettings())).toBe(false)
   })
 })
 

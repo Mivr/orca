@@ -120,6 +120,14 @@ export type GrokAccountStatus = {
   error: string | null
 }
 
+export type AntigravityAccountStatus = {
+  signedIn: boolean
+  email: string | null
+  planType: string | null
+  source: string | null
+  error: string | null
+}
+
 export type RateLimitState = {
   claude: ProviderRateLimits | null
   codex: ProviderRateLimits | null
@@ -148,6 +156,8 @@ export type RateLimitState = {
   grokAuthConfigured: boolean
   /** True when main finds a Cursor desktop or CLI access token. */
   cursorAuthConfigured: boolean
+  /** True when main finds an Antigravity keyring token or Fleet usage override. */
+  antigravityAuthConfigured: boolean
   claudeTarget: RateLimitRuntimeTarget
   codexTarget: RateLimitRuntimeTarget
   inactiveClaudeAccounts: InactiveAccountUsage[]

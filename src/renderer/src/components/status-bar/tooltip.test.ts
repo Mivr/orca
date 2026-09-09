@@ -371,6 +371,31 @@ describe('getWindowSections', () => {
     expect(sections.find((section) => section.label === 'Weekly')?.window).toBeNull()
   })
 
+  it('preserves Antigravity 4-bucket breakdown in tooltip window sections', () => {
+    const p: ProviderRateLimits = {
+      provider: 'antigravity',
+      session: { usedPercent: 15, windowMinutes: 300, resetsAt: null, resetDescription: null },
+      weekly: { usedPercent: 40, windowMinutes: 10080, resetsAt: null, resetDescription: null },
+      buckets: [
+        { name: 'Gemini 7d', usedPercent: 40, windowMinutes: 10080, resetsAt: null, resetDescription: null },
+        { name: 'Gemini 5h', usedPercent: 15, windowMinutes: 300, resetsAt: null, resetDescription: null },
+        { name: 'Frontier 7d', usedPercent: 25, windowMinutes: 10080, resetsAt: null, resetDescription: null },
+        { name: 'Frontier 5h', usedPercent: 5, windowMinutes: 300, resetsAt: null, resetDescription: null }
+      ],
+      updatedAt: Date.now(),
+      error: null,
+      status: 'ok'
+    }
+    const sections = getWindowSections(p)
+    expect(sections.map((section) => section.label)).toEqual([
+      'Gemini 7d',
+      'Gemini 5h',
+      'Frontier 7d',
+      'Frontier 5h',
+      'Weekly'
+    ])
+  })
+
   it('returns session and weekly when buckets are absent', () => {
     const p: ProviderRateLimits = {
       provider: 'claude',

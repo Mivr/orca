@@ -25,6 +25,8 @@ export const rateLimitsApi = {
     ipcRenderer.invoke('rateLimits:fetchInactiveCodexAccounts'),
   refreshMiniMax: (): Promise<RateLimitState> => ipcRenderer.invoke('rateLimits:refreshMiniMax'),
   refreshGrok: (): Promise<RateLimitState> => ipcRenderer.invoke('rateLimits:refreshGrok'),
+  refreshAntigravity: (): Promise<RateLimitState> =>
+    ipcRenderer.invoke('rateLimits:refreshAntigravity'),
   onUpdate: (callback: (state: RateLimitState) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, state: RateLimitState) => callback(state)
     ipcRenderer.on('rateLimits:update', listener)

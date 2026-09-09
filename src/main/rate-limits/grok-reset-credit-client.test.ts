@@ -203,7 +203,8 @@ describe('consumeGrokRateLimitResetCreditFromRpc', () => {
     )
     const redeemCall = request.mock.calls.find((call) => call[0] === GROK_REDEEM_RESET_URL)
     expect(redeemCall).toBeDefined()
-    const body = new Uint8Array(redeemCall![1].body as Uint8Array)
+    const requestInit = (redeemCall as unknown as [string, RequestInit])[1]
+    const body = new Uint8Array(requestInit.body as ArrayBuffer)
     expect(Buffer.from(body).toString('hex')).toContain(
       Buffer.from(encodeRedeemResetRequest('restok_soon')).toString('hex')
     )

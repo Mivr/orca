@@ -111,6 +111,7 @@ export function useStatusBarController(floatingTerminalOpen: boolean) {
   const usageSettings = {
     ...settings,
     antigravityUsageConfigured,
+    antigravityAuthConfigured: rateLimits.antigravityAuthConfigured,
     minimaxCookieConfigured: rateLimits.minimaxCookieConfigured,
     minimaxApiKeyConfigured: rateLimits.minimaxApiKeyConfigured,
     grokAuthConfigured: rateLimits.grokAuthConfigured,

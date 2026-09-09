@@ -172,6 +172,9 @@ export abstract class RateLimitServicePolling extends RateLimitServiceFetchQueue
     if (plan.providers.includes('grok')) {
       await this.fetchGrokOnly()
     }
+    if (plan.providers.includes('antigravity')) {
+      await this.fetchAntigravityOnly()
+    }
   }
 
   protected async refreshIfWindowActive(): Promise<void> {

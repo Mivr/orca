@@ -48,6 +48,15 @@ function makeSnapshot(): unknown {
         error: null,
         status: 'unavailable'
       },
+      antigravity: {
+        provider: 'antigravity',
+        session: null,
+        weekly: null,
+        buckets: [],
+        updatedAt: 100,
+        error: null,
+        status: 'unavailable'
+      },
       codex: {
         provider: 'codex',
         session: {
@@ -115,12 +124,14 @@ describe('decodeAccountsSnapshot', () => {
         codexTarget?: unknown
         grok?: unknown
         cursor?: unknown
+        antigravity?: unknown
       }
     }
     delete raw.rateLimits.claudeTarget
     delete raw.rateLimits.codexTarget
     delete raw.rateLimits.grok
     delete raw.rateLimits.cursor
+    delete raw.rateLimits.antigravity
 
     const snapshot = decodeAccountsSnapshot(raw)
 
@@ -128,6 +139,7 @@ describe('decodeAccountsSnapshot', () => {
     expect(snapshot.rateLimits.codexTarget).toEqual({ runtime: 'host', wslDistro: null })
     expect(snapshot.rateLimits.grok).toBeUndefined()
     expect(snapshot.rateLimits.cursor).toBeUndefined()
+    expect(snapshot.rateLimits.antigravity).toBeUndefined()
   })
 
   it('decodes Cursor buckets, email, Stripe status, and Grok reset credits as first-class fields', () => {
@@ -207,6 +219,68 @@ describe('decodeAccountsSnapshot', () => {
     expect(snapshot.rateLimits.grok?.weekly?.usedPercent).toBe(13)
   })
 
+  it('decodes Antigravity buckets, email, and plan tier as first-class fields', () => {
+    const raw = makeSnapshot() as {
+      rateLimits: Record<string, unknown>
+    }
+    raw.rateLimits.antigravity = {
+      provider: 'antigravity',
+      session: null,
+      weekly: null,
+      buckets: [
+        {
+          name: 'Gemini 7d',
+          usedPercent: 12,
+          windowMinutes: 10_080,
+          resetsAt: 1000,
+          resetDescription: '7d'
+        },
+        {
+          name: 'Gemini 5h',
+          usedPercent: 20,
+          windowMinutes: 300,
+          resetsAt: 500,
+          resetDescription: '5h'
+        },
+        {
+          name: 'Frontier 7d',
+          usedPercent: 45,
+          windowMinutes: 10_080,
+          resetsAt: 1000,
+          resetDescription: '7d'
+        },
+        {
+          name: 'Frontier 5h',
+          usedPercent: 8,
+          windowMinutes: 300,
+          resetsAt: 500,
+          resetDescription: '5h'
+        }
+      ],
+      planType: 'Google AI Ultra',
+      usageMetadata: {
+        accountEmail: 'google-user@example.com',
+        authProvenance: 'google-user@example.com · Google AI Ultra'
+      },
+      updatedAt: 100,
+      error: null,
+      status: 'ok'
+    }
+
+    const snapshot = decodeAccountsSnapshot(raw)
+
+    expect(snapshot.rateLimits.antigravity?.buckets?.map((bucket) => bucket.name)).toEqual([
+      'Gemini 7d',
+      'Gemini 5h',
+      'Frontier 7d',
+      'Frontier 5h'
+    ])
+    expect(snapshot.rateLimits.antigravity?.usageMetadata?.accountEmail).toBe(
+      'google-user@example.com'
+    )
+    expect(snapshot.rateLimits.antigravity?.planType).toBe('Google AI Ultra')
+  })
+
   it.each([
     ['account arrays', ['codex', 'accounts'], {}],
     ['active account IDs', ['codex', 'activeAccountId'], 42],
@@ -223,7 +297,8 @@ describe('decodeAccountsSnapshot', () => {
     ],
     ['credit expiry', ['rateLimits', 'codex', 'rateLimitResetCredits', 'nextExpiresAt'], 'soon'],
     ['Grok provider identity', ['rateLimits', 'grok', 'provider'], 'codex'],
-    ['Cursor provider identity', ['rateLimits', 'cursor', 'provider'], 'grok']
+    ['Cursor provider identity', ['rateLimits', 'cursor', 'provider'], 'grok'],
+    ['Antigravity provider identity', ['rateLimits', 'antigravity', 'provider'], 'codex']
   ] satisfies Array<[string, string[], unknown]>)('rejects malformed %s', (_name, path, value) => {
     const snapshot = makeSnapshot()
     setPath(snapshot, path, value)

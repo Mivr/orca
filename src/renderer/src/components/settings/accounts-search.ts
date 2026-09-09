@@ -234,6 +234,24 @@ export const getAccountsGrokSearchEntries = createLocalizedCatalog(() => [
   }
 ])
 
+export const getAccountsAntigravitySearchEntries = createLocalizedCatalog(() => [
+  {
+    title: translate('auto.components.settings.accounts.search.antigravityTitle', 'Antigravity / Google AI'),
+    description: translate(
+      'auto.components.settings.accounts.search.antigravityDescription',
+      'Google AI subscription quota (Gemini 7d/5h, Frontier 7d/5h) via agy CLI login or Fleet override.'
+    ),
+    keywords: [
+      ...translateSearchKeyword('auto.components.settings.accounts.search.antigravityKeyword', 'antigravity'),
+      ...translateSearchKeyword('auto.components.settings.accounts.search.googleAiKeyword', 'google ai'),
+      ...translateSearchKeyword('auto.components.settings.accounts.search.geminiKeyword', 'gemini'),
+      ...translateSearchKeyword('auto.components.settings.accounts.search.agyKeyword', 'agy'),
+      ...translateSearchKeyword('auto.components.settings.accounts.search.e949b08ffb', 'rate limit'),
+      ...translateSearchKeyword('auto.components.settings.accounts.search.86edc96bc9', 'status bar')
+    ]
+  }
+])
+
 export const getAccountsPaneSearchEntries = createLocalizedCatalog((): SettingsSearchEntry[] => [
   ...getAccountsLocationSearchEntries(),
   ...getAccountsClaudeSearchEntries(),
@@ -242,5 +260,6 @@ export const getAccountsPaneSearchEntries = createLocalizedCatalog((): SettingsS
   ...getAccountsOpencodeSearchEntries(),
   ...getAccountsMiniMaxSearchEntries(),
   ...getAccountsGrokSearchEntries(),
-  ...getAccountsCursorSearchEntries()
+  ...getAccountsCursorSearchEntries(),
+  ...getAccountsAntigravitySearchEntries()
 ])

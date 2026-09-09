@@ -232,7 +232,7 @@ export function parseGrpcWebResponse(
   headerStatus?: string | null,
   headerMessage?: string | null
 ): { payload: Uint8Array; grpcStatus: string; grpcMessage: string | null } {
-  let payload = new Uint8Array(0)
+  let payload: Uint8Array = new Uint8Array(0)
   let trailerStatus: string | null = null
   let trailerMessage: string | null = null
   let i = 0
