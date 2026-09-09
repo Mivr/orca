@@ -24,6 +24,7 @@ describe('antigravity-auth', () => {
     const dir = mkdtempSync(join(tmpdir(), 'orca-antigravity-auth-'))
     dirs.push(dir)
     process.env.FLEET_RUNTIME_HOME = dir
+    process.env.ORCA_ANTIGRAVITY_KEYRING_MOCK = ''
 
     const overridePath = join(dir, 'google-usage-override.json')
     writeFileSync(
@@ -113,5 +114,37 @@ describe('antigravity-auth', () => {
       authMethod: 'consumer'
     }
     expect(isAntigravityTokenFresh(session)).toBe(false)
+  })
+
+  it('prefers keyring credentials over fleet override while attaching overridePath as fallback', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orca-antigravity-auth-'))
+    dirs.push(dir)
+    process.env.FLEET_RUNTIME_HOME = dir
+
+    const overridePath = join(dir, 'google-usage-override.json')
+    writeFileSync(
+      overridePath,
+      JSON.stringify({
+        gemini_7d: { remaining_percent: 98.53, resets_at: 1788879157 },
+        source: 'google-ultra'
+      })
+    )
+
+    process.env.ORCA_ANTIGRAVITY_KEYRING_MOCK = JSON.stringify({
+      token: {
+        access_token: 'ya29.mock-preferred',
+        refresh_token: '1//refresh-preferred',
+        expiry: new Date(Date.now() + 3600_000).toISOString()
+      },
+      auth_method: 'consumer'
+    })
+
+    const result = readAntigravityAuthSession()
+    expect(result.status).toBe('ok')
+    if (result.status === 'ok') {
+      expect(result.session.source).toBe('keyring')
+      expect(result.session.accessToken).toBe('ya29.mock-preferred')
+      expect(result.session.overridePath).toBe(overridePath)
+    }
   })
 })

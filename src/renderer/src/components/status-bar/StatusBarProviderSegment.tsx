@@ -114,7 +114,13 @@ function VerboseProviderUsage({
     const visibleBuckets =
       p.provider === 'gemini'
         ? p.buckets.filter((bucket) => STATUS_BAR_BUCKET_NAMES.has(bucket.name))
-        : p.buckets
+        : p.provider === 'antigravity'
+          ? p.buckets.filter(
+              (bucket) =>
+                (bucket.name !== 'Other 5h' && bucket.name !== 'Frontier 5h') ||
+                bucket.usedPercent > 0
+            )
+          : p.buckets
     return (
       <>
         {visibleBuckets.map((bucket, index) => {

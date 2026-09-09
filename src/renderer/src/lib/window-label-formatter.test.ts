@@ -109,11 +109,15 @@ describe('formatStatusBarBucketName', () => {
     expect(formatStatusBarBucketName('On-demand', 'cursor')).toBe('On-demand')
   })
 
-  it('preserves Antigravity bucket names', () => {
-    expect(formatStatusBarBucketName('Gemini 5h', 'antigravity')).toBe('Gemini 5h')
-    expect(formatStatusBarBucketName('Gemini 7d', 'antigravity')).toBe('Gemini 7d')
-    expect(formatStatusBarBucketName('Frontier 5h', 'antigravity')).toBe('Frontier 5h')
-    expect(formatStatusBarBucketName('Frontier 7d', 'antigravity')).toBe('Frontier 7d')
+  it('formats Antigravity bucket names dropping Gemini and renaming Frontier to Other', () => {
+    expect(formatStatusBarBucketName('Gemini 5h', 'antigravity')).toBe('5h')
+    expect(formatStatusBarBucketName('Gemini 7d', 'antigravity')).toBe('7d')
+    expect(formatStatusBarBucketName('Frontier 5h', 'antigravity')).toBe('Other 5h')
+    expect(formatStatusBarBucketName('Frontier 7d', 'antigravity')).toBe('Other 7d')
+    expect(formatStatusBarBucketName('7d', 'antigravity')).toBe('7d')
+    expect(formatStatusBarBucketName('5h', 'antigravity')).toBe('5h')
+    expect(formatStatusBarBucketName('Other 7d', 'antigravity')).toBe('Other 7d')
+    expect(formatStatusBarBucketName('Other 5h', 'antigravity')).toBe('Other 5h')
   })
 
   it('preserves Gemini model buckets', () => {
