@@ -93,16 +93,16 @@ describe('formatRateLimitWindowChipLabel', () => {
 
 describe('formatStatusBarBucketName', () => {
   it('shortens standard Cursor model buckets', () => {
-    expect(formatStatusBarBucketName('Cursor Models', 'cursor')).toBe('Models')
-    expect(formatStatusBarBucketName('Other Models', 'cursor')).toBe('Other')
-    expect(formatStatusBarBucketName('Grok Bot', 'cursor')).toBe('Grok')
+    expect(formatStatusBarBucketName('Cursor Models', 'cursor')).toBe('Internal')
+    expect(formatStatusBarBucketName('Other Models', 'cursor')).toBe('External')
+    expect(formatStatusBarBucketName('Grok Bot', 'cursor')).toBe('bot')
     expect(formatStatusBarBucketName('Cursor Tab', 'cursor')).toBe('Tab')
   })
 
   it('shortens Cursor bucket names even if provider is omitted', () => {
-    expect(formatStatusBarBucketName('Cursor Models')).toBe('Models')
-    expect(formatStatusBarBucketName('Other Models')).toBe('Other')
-    expect(formatStatusBarBucketName('Grok Bot')).toBe('Grok')
+    expect(formatStatusBarBucketName('Cursor Models')).toBe('Internal')
+    expect(formatStatusBarBucketName('Other Models')).toBe('External')
+    expect(formatStatusBarBucketName('Grok Bot')).toBe('bot')
   })
 
   it('preserves other Cursor bucket names such as On-demand', () => {

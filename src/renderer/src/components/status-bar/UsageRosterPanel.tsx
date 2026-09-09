@@ -83,8 +83,21 @@ export function getTightestUsageSection(
 }
 
 // The soonest-resetting window summarizes the agent's next reset in one line.
-function soonestResetLabel(sections: UsageSection[], now: number): string | null {
-  const resets = sections
+function soonestResetLabel(
+  sections: UsageSection[],
+  now: number,
+  provider?: ProviderId
+): string | null {
+  // Why: for Cursor, Grok Bot has a rolling 7d window that would mask the user's
+  // primary monthly billing cycle reset on the row header. Prefer the primary pools.
+  const primarySections =
+    provider === 'cursor'
+      ? sections.filter((s) => s.label !== 'Grok Bot' && s.label !== 'bot')
+      : sections
+  const sectionsToSearch = primarySections.length > 0 ? primarySections : sections
+  const activeSections = sectionsToSearch.filter((s) => s.window.usedPercent > 0)
+  const candidateSections = activeSections.length > 0 ? activeSections : sectionsToSearch
+  const resets = candidateSections
     .map((s) => s.window.resetsAt)
     .filter((r): r is number => typeof r === 'number' && Number.isFinite(r))
   if (resets.length === 0) {
@@ -142,7 +155,7 @@ export function UsageRow({
   const hasUsage = sections.length > 0
   const name = getProviderDisplayName(p.provider)
   const plan = formatPlanLabel(p.planType)
-  const reset = hasUsage ? soonestResetLabel(sections, now) : null
+  const reset = hasUsage ? soonestResetLabel(sections, now, p.provider) : null
   const tightest = mode === 'compact' ? getTightestUsageSection(p, now) : null
 
   return (
