@@ -50,6 +50,10 @@ export async function launchDaemonChild(
     launchNonce,
     macosLoginSessionWatch
   } = options
+  // Why ORCA_DAEMON_EXEC_PATH: heterogeneous runtimes (bun server + node PTY host).
+  // The daemon owns every native addon, so it and its spawner path follow the override.
+  const daemonExecPath = process.env.ORCA_DAEMON_EXEC_PATH?.trim() || undefined
+  const forkExecPath = relocatedExecPath ?? daemonExecPath
   const child = fork(
     forkEntryPath,
     [
@@ -66,7 +70,7 @@ export async function launchDaemonChild(
       '--app-version',
       getAppEnvironment().getVersion(),
       '--spawner-exec-path',
-      process.execPath,
+      forkExecPath ?? process.execPath,
       ...(macosLoginSessionWatch ? ['--login-session-watch'] : []),
       ...daemonLogArgs()
     ],
@@ -77,7 +81,7 @@ export async function launchDaemonChild(
       detached: true,
       stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
       // Why: run the byte-identical relocated Orca.exe so the image path sits outside the updater's kill zone.
-      ...(relocatedExecPath ? { execPath: relocatedExecPath } : {}),
+      ...(forkExecPath ? { execPath: forkExecPath } : {}),
       // Why: run the fork as plain Node so Electron's GPU/display init can't interfere with node-pty's posix_spawn of the spawn-helper.
       env: {
         ...process.env,
