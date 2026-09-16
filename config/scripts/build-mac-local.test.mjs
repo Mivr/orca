@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest'
-import { createLocalBuildVersion } from './build-mac-local.mjs'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  buildMacElectronBuilderArgs,
+  createLocalBuildVersion,
+  resolveMacBuildArch,
+  runLocalMacBuild
+} from './build-mac-local.mjs'
 
 describe('createLocalBuildVersion', () => {
   it('creates unique valid prerelease versions without changing the release base', () => {
@@ -11,5 +16,59 @@ describe('createLocalBuildVersion', () => {
 
   it('sanitizes commit identifiers', () => {
     expect(createLocalBuildVersion('1.0.0', 1, 'abc/def')).toBe('1.0.0-local.1.abcdef')
+  })
+})
+
+describe('native-arch local Mac packaging', () => {
+  it('keeps dual-arch electron-builder args unless native-only is requested', () => {
+    expect(resolveMacBuildArch({ hostArch: 'arm64', nativeOnly: false })).toBeNull()
+    expect(buildMacElectronBuilderArgs(null)).toEqual([
+      'exec',
+      'electron-builder',
+      '--config',
+      'config/electron-builder.config.cjs',
+      '--mac'
+    ])
+  })
+
+  it('passes the host architecture when ORCA_MAC_NATIVE_ARCH is set', () => {
+    expect(resolveMacBuildArch({ hostArch: 'arm64', nativeOnly: true })).toBe('arm64')
+    expect(resolveMacBuildArch({ hostArch: 'x64', nativeOnly: true })).toBe('x64')
+    expect(buildMacElectronBuilderArgs('arm64')).toEqual([
+      'exec',
+      'electron-builder',
+      '--config',
+      'config/electron-builder.config.cjs',
+      '--mac',
+      '--arm64'
+    ])
+  })
+
+  it('rejects unsupported architectures', () => {
+    expect(() => resolveMacBuildArch({ hostArch: 'ia32', nativeOnly: true })).toThrow(
+      'Unsupported macOS build architecture'
+    )
+  })
+
+  it('stamps the local version and forwards native-arch args to electron-builder', () => {
+    const execFile = vi.fn()
+    runLocalMacBuild({
+      arch: 'arm64',
+      environment: { PATH: '/bin' },
+      execFile,
+      platform: 'darwin',
+      identity: { commit: 'abc123def456', version: '1.4.197-local.1.abc123def456' }
+    })
+    expect(execFile).toHaveBeenCalledWith(
+      'pnpm',
+      buildMacElectronBuilderArgs('arm64'),
+      expect.objectContaining({
+        env: expect.objectContaining({
+          ORCA_BUILD_COMMIT: 'abc123def456',
+          ORCA_LOCAL_BUILD_VERSION: '1.4.197-local.1.abc123def456'
+        }),
+        stdio: 'inherit'
+      })
+    )
   })
 })
