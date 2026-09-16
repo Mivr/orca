@@ -39,6 +39,22 @@ const isWinAdhoc = process.env.ORCA_WIN_ADHOC === '1'
 const isWinDevChannel = isWinHourly || isWinDaily || isWinAdhoc
 const isMacRelease = process.env.ORCA_MAC_RELEASE === '1' || isMacHourly || isMacDaily || isMacAdhoc
 const isLinuxArm64Release = process.env.ORCA_LINUX_ARM64_RELEASE === '1'
+const SUPPORTED_MAC_TARGET_ARCHES = new Set(['x64', 'arm64'])
+
+function resolveMacTargetArchs() {
+  if (process.env.ORCA_MAC_NATIVE_ARCH !== '1') {
+    return ['x64', 'arm64']
+  }
+  const arch = process.env.ORCA_MAC_BUILD_ARCH || process.arch
+  if (!SUPPORTED_MAC_TARGET_ARCHES.has(arch)) {
+    throw new Error(
+      `Unsupported macOS native-arch target: ${arch}. Use ORCA_MAC_BUILD_ARCH=x64|arm64.`
+    )
+  }
+  return [arch]
+}
+
+const macTargetArchs = resolveMacTargetArchs()
 const localBuildVersion =
   isMacRelease || isWinDevChannel ? undefined : process.env.ORCA_LOCAL_BUILD_VERSION
 const isHourlyChannel = isMacHourly || isWinHourly
@@ -543,11 +559,11 @@ module.exports = {
     target: [
       {
         target: 'dmg',
-        arch: ['x64', 'arm64']
+        arch: macTargetArchs
       },
       {
         target: 'zip',
-        arch: ['x64', 'arm64']
+        arch: macTargetArchs
       }
     ]
   },
