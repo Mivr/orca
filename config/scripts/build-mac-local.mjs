@@ -32,6 +32,48 @@ export function buildMacElectronBuilderArgs(arch) {
   return args
 }
 
+/** Prefer the newest advertised GitHub release when main's package.json lags the cut. */
+export function pickLocalBuildBaseVersion(packageVersion, advertisedReleaseVersion) {
+  if (!advertisedReleaseVersion) {
+    return packageVersion
+  }
+  const advertised = advertisedReleaseVersion.replace(/^v/i, '')
+  const rank = (value) => {
+    const match = /^(\d+)\.(\d+)\.(\d+)/.exec(value)
+    return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null
+  }
+  const packageRank = rank(packageVersion)
+  const advertisedRank = rank(advertised)
+  if (!packageRank) {
+    throw new Error(`Package version is not valid semver: ${packageVersion}`)
+  }
+  if (!advertisedRank) {
+    return packageVersion
+  }
+  for (let i = 0; i < 3; i += 1) {
+    if (advertisedRank[i] > packageRank[i]) {
+      return advertised
+    }
+    if (advertisedRank[i] < packageRank[i]) {
+      return packageVersion
+    }
+  }
+  return packageVersion
+}
+
+function readLatestGithubReleaseVersion() {
+  try {
+    const tag = execFileSync(
+      'gh',
+      ['release', 'view', '--repo', 'stablyai/orca', '--json', 'tagName', '--jq', '.tagName'],
+      { encoding: 'utf8' }
+    ).trim()
+    return tag.replace(/^v/i, '') || null
+  } catch {
+    return null
+  }
+}
+
 export function createLocalBuildVersion(baseVersion, timestamp, commit) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(baseVersion)) {
     throw new Error(`Package version is not valid semver: ${baseVersion}`)
@@ -47,14 +89,27 @@ export function createLocalBuildVersion(baseVersion, timestamp, commit) {
   return baseVersion.includes('-') ? `${baseVersion}.${suffix}` : `${baseVersion}-${suffix}`
 }
 
-export function getLocalBuildIdentity() {
-  const packageJson = JSON.parse(readFileSync(resolve('package.json'), 'utf8'))
-  const commit = execFileSync('git', ['rev-parse', '--short=12', 'HEAD'], {
-    encoding: 'utf8'
-  }).trim()
+export function getLocalBuildIdentity({
+  packageVersion,
+  advertisedReleaseVersion,
+  timestamp = Date.now(),
+  commit
+} = {}) {
+  const resolvedPackageVersion =
+    packageVersion ?? JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version
+  const resolvedCommit =
+    commit ??
+    execFileSync('git', ['rev-parse', '--short=12', 'HEAD'], {
+      encoding: 'utf8'
+    }).trim()
+  const advertised =
+    advertisedReleaseVersion === undefined
+      ? readLatestGithubReleaseVersion()
+      : advertisedReleaseVersion
+  const baseVersion = pickLocalBuildBaseVersion(resolvedPackageVersion, advertised)
   return {
-    commit,
-    version: createLocalBuildVersion(packageJson.version, Date.now(), commit)
+    commit: resolvedCommit,
+    version: createLocalBuildVersion(baseVersion, timestamp, resolvedCommit)
   }
 }
 

@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   buildMacElectronBuilderArgs,
   createLocalBuildVersion,
+  getLocalBuildIdentity,
+  pickLocalBuildBaseVersion,
   resolveMacBuildArch,
   runLocalMacBuild
 } from './build-mac-local.mjs'
@@ -16,6 +18,35 @@ describe('createLocalBuildVersion', () => {
 
   it('sanitizes commit identifiers', () => {
     expect(createLocalBuildVersion('1.0.0', 1, 'abc/def')).toBe('1.0.0-local.1.abcdef')
+  })
+})
+
+describe('pickLocalBuildBaseVersion', () => {
+  it('uses a newer GitHub release when package.json on main still lags', () => {
+    expect(pickLocalBuildBaseVersion('1.4.197', 'v1.4.204')).toBe('1.4.204')
+    expect(pickLocalBuildBaseVersion('1.4.197', '1.4.204')).toBe('1.4.204')
+  })
+
+  it('keeps package.json when it is already newer or the release is missing', () => {
+    expect(pickLocalBuildBaseVersion('1.4.210', '1.4.204')).toBe('1.4.210')
+    expect(pickLocalBuildBaseVersion('1.4.197', null)).toBe('1.4.197')
+    expect(pickLocalBuildBaseVersion('1.4.204', '1.4.204')).toBe('1.4.204')
+  })
+})
+
+describe('getLocalBuildIdentity', () => {
+  it('stamps the local label from the newer advertised release', () => {
+    expect(
+      getLocalBuildIdentity({
+        packageVersion: '1.4.197',
+        advertisedReleaseVersion: 'v1.4.204',
+        timestamp: 9,
+        commit: 'cce2636b2862'
+      })
+    ).toEqual({
+      commit: 'cce2636b2862',
+      version: '1.4.204-local.9.cce2636b2862'
+    })
   })
 })
 
