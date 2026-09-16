@@ -13,6 +13,7 @@ import {
 export const UPSTREAM_REMOTE = 'upstream'
 export const UPSTREAM_URL = 'https://github.com/stablyai/orca.git'
 export const UPSTREAM_REF = 'refs/heads/main'
+export const FORK_INTEGRATION_BRANCH = 'main'
 export const LOCAL_CLIENT_APP_NAME = 'Orca Local.app'
 export const LOCAL_BUILD_IDENTITY_FILE = 'orca-local-build.json'
 
@@ -148,21 +149,41 @@ function applyGitAction(decision, { dryRun }) {
   }
 }
 
-function pushIntegrationBranch({ dryRun, skipPush, gitAction, upstreamSha }) {
+/** Push rebased HEAD to fork main. Never force-push upstream over local Mac patches. */
+export function buildForkMainPushArgs(gitAction) {
+  if (gitAction === 'skip-dirty') {
+    return null
+  }
+  const refspec = `HEAD:refs/heads/${FORK_INTEGRATION_BRANCH}`
+  if (gitAction === 'rebase') {
+    return ['push', '--force-with-lease', 'origin', refspec]
+  }
+  if (gitAction === 'fast-forward' || gitAction === 'skip-current') {
+    return ['push', 'origin', refspec]
+  }
+  return null
+}
+
+function pushIntegrationBranch({ dryRun, skipPush, gitAction }) {
   if (dryRun || skipPush) {
     return
   }
-  const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'])
-  if (gitAction === 'fast-forward' || gitAction === 'rebase') {
-    git(['push', '--force-with-lease', 'origin', `HEAD:refs/heads/${branch}`])
+  const mainArgs = buildForkMainPushArgs(gitAction)
+  if (mainArgs) {
+    git(mainArgs)
   }
-  const originMain = git(['rev-parse', 'origin/main'], { allowFail: true })
+  const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'])
   if (
-    originMain &&
-    originMain !== upstreamSha &&
-    gitOk(['merge-base', '--is-ancestor', originMain, upstreamSha])
+    branch &&
+    branch !== FORK_INTEGRATION_BRANCH &&
+    branch !== 'HEAD' &&
+    (gitAction === 'fast-forward' || gitAction === 'rebase')
   ) {
-    git(['push', 'origin', `${upstreamSha}:refs/heads/main`])
+    const args = ['push', 'origin', `HEAD:refs/heads/${branch}`]
+    if (gitAction === 'rebase') {
+      args.splice(1, 0, '--force-with-lease')
+    }
+    git(args)
   }
 }
 
