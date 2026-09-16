@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
+  FORK_INTEGRATION_BRANCH,
+  buildForkMainPushArgs,
   collectLocalMacClientGitFacts,
   parseUpdaterArgs,
   packagedMacAppCandidates,
@@ -129,6 +131,27 @@ describe('runLocalMacClientUpdate', () => {
     )
     expect(rebuild).toHaveBeenCalled()
     expect(logs.some((line) => line.includes(`upstream ${upstream}`))).toBe(true)
+  })
+
+  it('publishes the rebased tip to fork main and never force-pushes upstream over patches', () => {
+    expect(FORK_INTEGRATION_BRANCH).toBe('main')
+    expect(buildForkMainPushArgs('rebase')).toEqual([
+      'push',
+      '--force-with-lease',
+      'origin',
+      'HEAD:refs/heads/main'
+    ])
+    expect(buildForkMainPushArgs('fast-forward')).toEqual([
+      'push',
+      'origin',
+      'HEAD:refs/heads/main'
+    ])
+    expect(buildForkMainPushArgs('skip-current')).toEqual([
+      'push',
+      'origin',
+      'HEAD:refs/heads/main'
+    ])
+    expect(buildForkMainPushArgs('skip-dirty')).toBeNull()
   })
 
   it('fast-forwards when there are no unique commits and still fetches on dry-run', () => {
