@@ -7,9 +7,7 @@ import { dirname, join, resolve } from 'node:path'
 import {
   decideLocalMacClientGitAction,
   decideLocalMacClientRebuild,
-  processCommandLinesHaveRunningLocalAgents,
-  workingTreeHasTrackedChanges,
-  worktreePsHasRunningLocalAgents
+  workingTreeHasTrackedChanges
 } from './local-mac-client-update-decision.mjs'
 
 export const UPSTREAM_REMOTE = 'upstream'
@@ -94,12 +92,10 @@ export function collectLocalMacClientGitFacts({
   upstreamSha,
   upstreamIsAncestorOfHead,
   headIsAncestorOfUpstream,
-  localOnlyCommits,
-  agentsRunning = false
+  localOnlyCommits
 }) {
   return {
     dirty: workingTreeHasTrackedChanges(porcelain),
-    agentsRunning,
     headSha,
     upstreamSha,
     upstreamIsAncestorOfHead,
@@ -136,33 +132,8 @@ function collectFactsFromGit({ fetch }) {
     upstreamSha,
     upstreamIsAncestorOfHead: gitOk(['merge-base', '--is-ancestor', upstreamSha, headSha]),
     headIsAncestorOfUpstream: gitOk(['merge-base', '--is-ancestor', headSha, upstreamSha]),
-    localOnlyCommits: localOnly ? localOnly.split('\n').filter(Boolean) : [],
-    agentsRunning: collectRunningLocalAgents()
+    localOnlyCommits: localOnly ? localOnly.split('\n').filter(Boolean) : []
   })
-}
-
-function collectRunningLocalAgents() {
-  try {
-    const output = execFileSync('orca', ['worktree', 'ps', '--json'], {
-      encoding: 'utf8',
-      timeout: 15_000,
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
-    if (worktreePsHasRunningLocalAgents(JSON.parse(output))) {
-      return true
-    }
-  } catch {
-    // Runtime may be down; fall through to process-table detection.
-  }
-  try {
-    const output = execFileSync('ps', ['-axo', 'command='], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
-    return processCommandLinesHaveRunningLocalAgents(output.split('\n'))
-  } catch {
-    return false
-  }
 }
 
 function applyGitAction(decision, { dryRun }) {
@@ -180,7 +151,7 @@ function applyGitAction(decision, { dryRun }) {
 
 /** Push rebased HEAD to fork main. Never force-push upstream over local Mac patches. */
 export function buildForkMainPushArgs(gitAction) {
-  if (gitAction === 'skip-dirty' || gitAction === 'skip-agents-running') {
+  if (gitAction === 'skip-dirty') {
     return null
   }
   const refspec = `HEAD:refs/heads/${FORK_INTEGRATION_BRANCH}`
@@ -258,10 +229,7 @@ export function runLocalMacClientUpdate({
   }
   applyGit(gitDecision, options)
   const headAfter =
-    options.dryRun ||
-    gitDecision.action === 'skip-dirty' ||
-    gitDecision.action === 'skip-agents-running' ||
-    gitDecision.action === 'skip-current'
+    options.dryRun || gitDecision.action === 'skip-dirty' || gitDecision.action === 'skip-current'
       ? facts.headSha
       : readHeadSha()
   const installed = readInstalled(installPath)
