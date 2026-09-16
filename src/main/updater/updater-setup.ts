@@ -17,6 +17,7 @@ import { createUpdaterDiagnosticLogger } from '../linux-package-install-diagnost
 import { registerAutoUpdaterHandlers } from '../updater-events'
 import { getServeUpdateHandoffFailure } from '../serve-update-handoff'
 import { recordUpdaterLifecycle } from '../updater-lifecycle-diagnostics'
+import { isLocalPackagedBuildVersion } from '../../shared/app-version'
 import { AUTO_UPDATE_CHECK_INTERVAL_MS } from './updater-state'
 import { UpdaterDownloadInstall } from './updater-download-install'
 import type { UpdateInstallMode } from './updater-state'
@@ -133,6 +134,12 @@ export class UpdaterSetup extends UpdaterDownloadInstall {
       return
     }
     if (is.dev) {
+      return
+    }
+    // Local `pnpm build:mac` versions are older than GitHub stable and must not
+    // offer a signed release that would replace the patched client.
+    if (isLocalPackagedBuildVersion(app.getVersion())) {
+      this.sendStatus({ state: 'not-available' })
       return
     }
 
