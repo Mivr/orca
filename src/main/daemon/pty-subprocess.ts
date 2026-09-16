@@ -11,6 +11,7 @@ import {
   runPtySpawnHealthProbe
 } from './pty-subprocess/spawn-preflight'
 import { createDaemonPtySubprocessHandle } from './pty-subprocess/subprocess-handle'
+import { rewritePtySpawnForSandbox } from './pty-subprocess/sandbox-exec-rewrite'
 import type { StartupCommandDelivery } from '../../shared/codex-startup-delivery'
 import type { TuiAgent } from '../../shared/tui-agent'
 
@@ -69,6 +70,17 @@ export async function createPtySubprocess(opts: PtySubprocessOptions): Promise<S
   const size = normalizePtySize(opts.cols, opts.rows)
   const env = createDaemonPtyEnvironment(opts)
   const launch = createPtyShellLaunchPlan(opts, env)
+  // Sandbox transport: orcad-stamped agent spawns run inside the worktree's
+  // container via `docker exec`. Argument layer only — the PTY master,
+  // preflight cwd, and handle semantics below are unchanged.
+  const sandboxRewrite = rewritePtySpawnForSandbox({
+    env,
+    shellPath: launch.shellPath,
+    shellArgs: launch.shellArgs,
+    cwd: launch.spawnCwd
+  })
+  const shellPath = sandboxRewrite?.shellPath ?? launch.shellPath
+  const shellArgs = sandboxRewrite?.shellArgs ?? launch.shellArgs
 
   await preflightPtySpawn({
     validationCwd: launch.validationCwd,
@@ -83,8 +95,8 @@ export async function createPtySubprocess(opts: PtySubprocessOptions): Promise<S
   let spawned: SpawnedDaemonPty
   try {
     spawned = spawnNativeDaemonPty({
-      shellPath: launch.shellPath,
-      shellArgs: launch.shellArgs,
+      shellPath,
+      shellArgs,
       spawnCwd: launch.spawnCwd,
       env,
       cols: size.cols,

@@ -32,6 +32,7 @@ import { hostname } from 'node:os'
 import { claudeStructuredAuthPolicyForSettings } from '../claude-accounts/claude-structured-auth-policy'
 import { probeAgentSessionProcessIdentity } from './agent-session-process-identity-probe'
 import { structuredAgentSessionTabId } from '../../shared/structured-agent-session-projection'
+import { describeSandboxesForWorktrees } from '../sandbox/sandbox-manager'
 
 export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStructuredAgentSessionRecoverTuiOwner {
   async getWorktreePs(
@@ -115,6 +116,20 @@ export class OrcaRuntimeWithGetWorktreePs extends OrcaRuntimeWithStructuredAgent
       getSummary: (summaryMap, pathIndex, missingIds, worktreeId) =>
         this.getSummaryForRuntimeWorktreeId(summaryMap, pathIndex, missingIds, worktreeId)
     })
+    // Why here and not in the summaries builder: sandbox state is a live docker
+    // read (10s-cached, skipped entirely unless sandbox routing is enabled),
+    // and the builder stays a pure store projection. iOS renders this list.
+    const sandboxByWorktree = await describeSandboxesForWorktrees([...summaries.keys()])
+    for (const [worktreeId, state] of sandboxByWorktree) {
+      const summary = summaries.get(worktreeId)
+      if (!summary) {
+        continue
+      }
+      summary.sandbox = state.sandbox
+      if (state.sandboxReason) {
+        summary.sandboxReason = state.sandboxReason
+      }
+    }
 
     const sorted = [...summaries.values()].sort(compareWorktreePs)
     // Why: the same cap starvation as worktree.list — a host whose rows all sort last gets no

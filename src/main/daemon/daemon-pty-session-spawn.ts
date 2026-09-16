@@ -12,6 +12,7 @@ import { DaemonPtySpawnResult } from './daemon-pty-spawn-result'
 import type { DaemonPtySpawnContext } from './daemon-pty-spawn-request'
 import type { ColdRestoreInfo } from './history-reader'
 import { mintPtySessionId } from './pty-session-id'
+import { admitSandboxSpawn } from '../sandbox/sandbox-spawn-admission'
 import { shellPathSupportsPtyStartupBarrier, resolvePtyShellPath } from './shell-ready'
 import { shellReadyMarkerComesFromLineEditor } from '../../shared/shell-ready-marker-timing'
 import { getRecoveredHistorySeedSegments } from './terminal-history-seed-segments'
@@ -27,7 +28,26 @@ import { addWslEnvKeys } from '../wsl-env'
 export abstract class DaemonPtySessionSpawn extends DaemonPtySpawnResult {
   async spawn(opts: PtySpawnOptions): Promise<PtySpawnResult> {
     const spawnOpts = this.withHistoryIsolation(opts)
-    const sessionId = spawnOpts.sessionId ?? mintPtySessionId(spawnOpts.worktreeId)
+    // Sandbox admission (orcad-side): fresh agent spawns for a worktree are
+    // admitted into that worktree's container here; the stamped env is the
+    // only thing the host daemon sees. Throws `sandbox_slots_full` past cap.
+    const sandboxStamp = await admitSandboxSpawn({
+      ...(spawnOpts.cwd ? { cwd: spawnOpts.cwd } : {}),
+      ...(spawnOpts.worktreeId ? { worktreeId: spawnOpts.worktreeId } : {}),
+      ...(spawnOpts.command !== undefined ? { command: spawnOpts.command } : {}),
+      ...(spawnOpts.launchAgent !== undefined ? { launchAgent: spawnOpts.launchAgent } : {}),
+      ...(spawnOpts.attachOnly !== undefined ? { attachOnly: spawnOpts.attachOnly } : {}),
+      ...(spawnOpts.isNewSession !== undefined ? { isNewSession: spawnOpts.isNewSession } : {}),
+      ...(spawnOpts.sessionId !== undefined ? { sessionId: spawnOpts.sessionId } : {}),
+      ...(spawnOpts.env ? { env: spawnOpts.env } : {})
+    })
+    const routedOpts =
+      sandboxStamp && spawnOpts.env
+        ? { ...spawnOpts, env: { ...spawnOpts.env, ...sandboxStamp } }
+        : sandboxStamp
+          ? { ...spawnOpts, env: { ...sandboxStamp } }
+          : spawnOpts
+    const sessionId = routedOpts.sessionId ?? mintPtySessionId(routedOpts.worktreeId)
     const operation: PendingDaemonSpawnOperation = {
       exitsBySessionId: new Map(),
       ignoredExitIncarnationIds: new Set<string>(),
@@ -47,7 +67,7 @@ export abstract class DaemonPtySessionSpawn extends DaemonPtySpawnResult {
     try {
       return await this.withHistorySpawnLock(sessionId, () =>
         this.withDaemonRetry(() =>
-          this.doSpawn({ ...spawnOpts, sessionId }, operation, historyRecovery)
+          this.doSpawn({ ...routedOpts, sessionId }, operation, historyRecovery)
         )
       )
     } finally {

@@ -17,6 +17,7 @@ import type { TerminalCreateOptions } from './runtime-terminal-contracts'
 import { resolveLocalWindowsAgentStartupShell } from '../../shared/windows-terminal-shell'
 import { isTuiAgentEnabled } from '../../shared/tui-agent-selection'
 import { resolveBareAgentLaunchCommand } from './runtime-agent-launch-resolution'
+import { removeSandboxForWorktree } from '../sandbox/sandbox-manager'
 import { buildAgentStartupPlan } from '../../shared/tui-agent-startup'
 import {
   resolveTuiAgentLaunchArgs,
@@ -59,6 +60,11 @@ export class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRuntimeWith
     } else {
       store.removeWorktreeMeta(worktreeId)
     }
+    // Why fire-and-forget and outside the owner gate below: the sandbox is tied
+    // to the worktree id, and a removed worktree must stop+remove its container
+    // even when metadata ownership stays with another host. No-ops unless
+    // sandbox routing is enabled; failures never fail the removal.
+    void removeSandboxForWorktree(worktreeId).catch(() => {})
     if (!preservesSameIdOwner) {
       // A paired PTY can outlive the delete acknowledgement; it must not be
       // rescued into a newly-created occupant of the same path-derived ID.

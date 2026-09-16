@@ -71,6 +71,10 @@ export type RuntimeWorktreePsSummary = {
   /** Optional discriminator for a working workspace; older clients fall back to ordinary working. */
   workingMode?: AgentWorkingMode
   agents: RuntimeWorktreeAgentRow[]
+  /** Phase-1 docker sandbox state. Absent on hosts that predate the field. */
+  sandbox?: 'running' | 'absent'
+  /** Set when sandbox admission last rejected this worktree (cap reached). */
+  sandboxReason?: 'sandbox_slots_full'
 }
 
 export type RuntimeGitLocalBranches = {
