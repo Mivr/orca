@@ -12,7 +12,9 @@ const MUTABLE_BUILD_ENV = [
   'ORCA_HOURLY_BUILD_VERSION',
   'ORCA_DAILY_BUILD_VERSION',
   'ORCA_ADHOC_BUILD_VERSION',
-  'ORCA_LOCAL_BUILD_VERSION'
+  'ORCA_LOCAL_BUILD_VERSION',
+  'ORCA_MAC_NATIVE_ARCH',
+  'ORCA_MAC_BUILD_ARCH'
 ]
 
 /** Re-requires the config under a temporary env, then restores env and module cache. */
@@ -147,6 +149,16 @@ describe('electron-builder mac channel config', () => {
           )
         })
       })
+    })
+  })
+
+  it('restricts local native-arch packaging to one Mac architecture', () => {
+    expect(electronBuilderConfig.mac.target.map((target) => target.arch)).toEqual([
+      ['x64', 'arm64'],
+      ['x64', 'arm64']
+    ])
+    withEnv({ ORCA_MAC_NATIVE_ARCH: '1', ORCA_MAC_BUILD_ARCH: 'arm64' }, (config) => {
+      expect(config.mac.target.map((target) => target.arch)).toEqual([['arm64'], ['arm64']])
     })
   })
 })
