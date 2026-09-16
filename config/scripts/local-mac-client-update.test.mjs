@@ -66,21 +66,6 @@ describe('runLocalMacClientUpdate', () => {
     )
   })
 
-  it('refuses to rebase or reinstall while local agents are running', () => {
-    const rebuild = vi.fn()
-    const result = runLocalMacClientUpdate({
-      argv: [],
-      collectFacts: () => facts({ agentsRunning: true }),
-      applyGit: vi.fn(),
-      rebuild,
-      push: vi.fn(),
-      log: () => {}
-    })
-    expect(result.gitDecision.action).toBe('skip-agents-running')
-    expect(result.rebuildDecision.action).toBe('skip')
-    expect(rebuild).not.toHaveBeenCalled()
-  })
-
   it('refuses to rebase or rebuild a dirty tree', () => {
     const applyGit = vi.fn()
     const rebuild = vi.fn()
@@ -167,7 +152,6 @@ describe('runLocalMacClientUpdate', () => {
       'HEAD:refs/heads/main'
     ])
     expect(buildForkMainPushArgs('skip-dirty')).toBeNull()
-    expect(buildForkMainPushArgs('skip-agents-running')).toBeNull()
   })
 
   it('fast-forwards when there are no unique commits and still fetches on dry-run', () => {

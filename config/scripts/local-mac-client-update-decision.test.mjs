@@ -3,9 +3,7 @@ import {
   decideLocalMacClientGitAction,
   decideLocalMacClientRebuild,
   installedClientMatchesHead,
-  processCommandLinesHaveRunningLocalAgents,
-  workingTreeHasTrackedChanges,
-  worktreePsHasRunningLocalAgents
+  workingTreeHasTrackedChanges
 } from './local-mac-client-update-decision.mjs'
 
 const upstream = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -27,20 +25,6 @@ describe('workingTreeHasTrackedChanges', () => {
 })
 
 describe('decideLocalMacClientGitAction', () => {
-  it('refuses to rebase while local agents are running', () => {
-    expect(
-      decideLocalMacClientGitAction({
-        dirty: false,
-        agentsRunning: true,
-        headSha: localPatch,
-        upstreamSha: upstream,
-        upstreamIsAncestorOfHead: false,
-        headIsAncestorOfUpstream: false,
-        localOnlyCommits: [localPatch]
-      })
-    ).toMatchObject({ action: 'skip-agents-running', localOnlyCommits: [localPatch] })
-  })
-
   it('refuses to rebase a dirty working tree', () => {
     expect(
       decideLocalMacClientGitAction({
@@ -161,40 +145,6 @@ describe('decideLocalMacClientRebuild', () => {
     expect(decideLocalMacClientRebuild({ gitAction: 'skip-dirty', headSha: head })).toMatchObject({
       action: 'skip'
     })
-    expect(
-      decideLocalMacClientRebuild({ gitAction: 'skip-agents-running', headSha: head })
-    ).toMatchObject({ action: 'skip' })
-  })
-})
-
-describe('worktreePsHasRunningLocalAgents', () => {
-  it('detects working or permission-blocked agents from orca worktree ps JSON', () => {
-    expect(worktreePsHasRunningLocalAgents({ worktrees: [] })).toBe(false)
-    expect(
-      worktreePsHasRunningLocalAgents({
-        worktrees: [{ status: 'inactive', agents: [{ state: 'done' }] }]
-      })
-    ).toBe(false)
-    expect(
-      worktreePsHasRunningLocalAgents({
-        worktrees: [{ status: 'working', agents: [] }]
-      })
-    ).toBe(true)
-    expect(
-      worktreePsHasRunningLocalAgents({
-        worktrees: [{ status: 'inactive', agents: [{ state: 'waiting' }] }]
-      })
-    ).toBe(true)
-  })
-})
-
-describe('processCommandLinesHaveRunningLocalAgents', () => {
-  it('matches agent CLI basenames and ignores unrelated commands', () => {
-    expect(processCommandLinesHaveRunningLocalAgents(['/usr/bin/git status'])).toBe(false)
-    expect(
-      processCommandLinesHaveRunningLocalAgents(['/Users/me/.local/bin/agy --print rebase'])
-    ).toBe(true)
-    expect(processCommandLinesHaveRunningLocalAgents(['codex exec --json'])).toBe(true)
   })
 })
 
