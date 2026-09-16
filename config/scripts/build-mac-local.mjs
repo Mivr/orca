@@ -2,6 +2,36 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
+const SUPPORTED_ARCHES = new Set(['x64', 'arm64'])
+
+export function resolveMacBuildArch({
+  hostArch = process.arch,
+  requestedArch = process.env.ORCA_MAC_BUILD_ARCH,
+  nativeOnly = process.env.ORCA_MAC_NATIVE_ARCH === '1'
+} = {}) {
+  const arch = requestedArch || (nativeOnly ? hostArch : null)
+  if (arch && !SUPPORTED_ARCHES.has(arch)) {
+    throw new Error(
+      `Unsupported macOS build architecture: ${arch}. Use ORCA_MAC_BUILD_ARCH=x64|arm64.`
+    )
+  }
+  return arch
+}
+
+export function buildMacElectronBuilderArgs(arch) {
+  const args = [
+    'exec',
+    'electron-builder',
+    '--config',
+    'config/electron-builder.config.cjs',
+    '--mac'
+  ]
+  if (arch) {
+    args.push(`--${arch}`)
+  }
+  return args
+}
+
 export function createLocalBuildVersion(baseVersion, timestamp, commit) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(baseVersion)) {
     throw new Error(`Package version is not valid semver: ${baseVersion}`)
@@ -28,19 +58,27 @@ export function getLocalBuildIdentity() {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {
-  const identity = getLocalBuildIdentity()
+export function runLocalMacBuild({
+  arch = resolveMacBuildArch(),
+  environment = process.env,
+  execFile = execFileSync,
+  platform = process.platform,
+  identity = getLocalBuildIdentity()
+} = {}) {
   console.log(`[build:mac] local update version ${identity.version}`)
-  execFileSync(
-    process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
-    ['exec', 'electron-builder', '--config', 'config/electron-builder.config.cjs', '--mac'],
-    {
-      env: {
-        ...process.env,
-        ORCA_BUILD_COMMIT: identity.commit,
-        ORCA_LOCAL_BUILD_VERSION: identity.version
-      },
-      stdio: 'inherit'
-    }
-  )
+  if (arch) {
+    console.log(`[build:mac] native-arch electron-builder target ${arch}`)
+  }
+  execFile(platform === 'win32' ? 'pnpm.cmd' : 'pnpm', buildMacElectronBuilderArgs(arch), {
+    env: {
+      ...environment,
+      ORCA_BUILD_COMMIT: identity.commit,
+      ORCA_LOCAL_BUILD_VERSION: identity.version
+    },
+    stdio: 'inherit'
+  })
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {
+  runLocalMacBuild()
 }
