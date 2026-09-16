@@ -15,6 +15,38 @@ export function installedClientMatchesHead(installed, headSha) {
   return headSha.startsWith(commit) || commit.startsWith(headSha)
 }
 
+export const RUNNING_LOCAL_AGENT_STATES = new Set(['working', 'blocked', 'waiting'])
+export const LOCAL_AGENT_PROCESS_NAMES = new Set([
+  'agy',
+  'claude',
+  'codex',
+  'opencode',
+  'gemini',
+  'grok'
+])
+
+/** True when `orca worktree ps --json` reports a live local agent. */
+export function worktreePsHasRunningLocalAgents(ps) {
+  const worktrees = Array.isArray(ps?.worktrees) ? ps.worktrees : []
+  return worktrees.some((worktree) => {
+    if (worktree.status === 'working' || worktree.status === 'permission') {
+      return true
+    }
+    const agents = Array.isArray(worktree.agents) ? worktree.agents : []
+    return agents.some((agent) => RUNNING_LOCAL_AGENT_STATES.has(agent.state))
+  })
+}
+
+/** True when a process table row is a known local agent CLI. */
+export function processCommandLinesHaveRunningLocalAgents(commandLines) {
+  return commandLines.some((line) => {
+    const first = line.trim().split(/\s+/)[0] ?? ''
+    const base = first.split(/[/\\]/).pop() ?? ''
+    const name = base.replace(/\.exe$/i, '')
+    return LOCAL_AGENT_PROCESS_NAMES.has(name)
+  })
+}
+
 /**
  * Decide the git step from facts collected at the I/O edge.
  * Dirty trees never rebase. Already-based trees keep local-only commits.
@@ -24,6 +56,13 @@ export function decideLocalMacClientGitAction(facts) {
     return {
       action: 'skip-dirty',
       reason: 'working tree is dirty; refusing to rebase',
+      localOnlyCommits: facts.localOnlyCommits ?? []
+    }
+  }
+  if (facts.agentsRunning) {
+    return {
+      action: 'skip-agents-running',
+      reason: 'local agents are running; refusing to rebase or reinstall',
       localOnlyCommits: facts.localOnlyCommits ?? []
     }
   }
@@ -65,6 +104,12 @@ export function decideLocalMacClientRebuild({ gitAction, headSha, installedCommi
     return {
       action: 'skip',
       reason: 'working tree is dirty; refusing to rebase or rebuild'
+    }
+  }
+  if (gitAction === 'skip-agents-running') {
+    return {
+      action: 'skip',
+      reason: 'local agents are running; refusing to rebase or reinstall'
     }
   }
   if (

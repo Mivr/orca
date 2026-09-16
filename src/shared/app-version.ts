@@ -32,6 +32,12 @@ export function isPerfPrereleaseAppVersion(value: string): boolean {
   return parsed?.prerelease.some((identifier) => identifier.toLowerCase() === 'perf') ?? false
 }
 
+/** Packaged `pnpm build:mac` identity, e.g. 1.4.197-local.1789587733774.c8525810be02 */
+export function isLocalPackagedBuildVersion(value: string): boolean {
+  const parsed = parseVersion(value)
+  return parsed?.prerelease[0]?.toLowerCase() === 'local'
+}
+
 function compareIdentifiers(left: string, right: string): number {
   const leftNumeric = /^\d+$/.test(left)
   const rightNumeric = /^\d+$/.test(right)
