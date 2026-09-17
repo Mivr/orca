@@ -164,6 +164,24 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerRuntimeEnv
     }
   }
 
+  /**
+   * Cutover7: sandbox-spool poll entry. Bridge-networked sandbox hooks cannot
+   * POST to loopback, so they spool into the mounted dir; this replays them
+   * into the same store as the startup drain. Idempotent — the drain consumes
+   * what it replays — so a fixed-interval poll is safe.
+   */
+  drainSandboxHookSpool(): number {
+    if (!this.endpointDir) {
+      return 0
+    }
+    return drainAgentHookSpool({
+      endpointDir: this.endpointDir,
+      getPersistedLaunchTokenHash: (paneKey) =>
+        this.hydratedLaunchTokenHashByPaneKey.get(this.resolvePaneKeyAlias(paneKey)),
+      ingest: (record: SpoolRecord) => this.ingestSpoolRecord(record)
+    })
+  }
+
   private rollbackTransportStart(): void {
     this.server?.close()
     this.server = null

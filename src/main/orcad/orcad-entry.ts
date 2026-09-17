@@ -102,7 +102,14 @@ async function startOrcadRuntime(
   let rpc: InstanceType<typeof OrcaRuntimeRpcServer> | null = null
   let uninstallHookStatusRepublish = (): void => {}
   let uninstallObservedStatusIdentity = (): void => {}
+  // Why declared here: registerCleanup replaces (not chains), so the spool
+  // poll created below must be cleared by this same cleanup, not a second one.
+  let sandboxSpoolPoll: ReturnType<typeof setInterval> | null = null
   registerCleanup(async () => {
+    if (sandboxSpoolPoll) {
+      clearInterval(sandboxSpoolPoll)
+      sandboxSpoolPoll = null
+    }
     try {
       await rpc?.stop()
     } finally {
@@ -140,6 +147,21 @@ async function startOrcadRuntime(
   )
   if (isAgentStatusHooksEnabled(store.getSettings())) {
     await agentHookServer.start({ env: 'production', userDataPath: runtimeUserDataPath })
+  }
+  // Why polled and not event-driven: the sandbox spool dir is host-local fs,
+  // but bridge-networked hooks cannot POST to loopback, so the spool files
+  // are the only signal — there is no socket event to hang off. 5s keeps the
+  // working/done indicator near-live; the drain consumes what it replays, so
+  // overlapping ticks are safe. Sandbox-gated: no containers, no polling.
+  const { isSandboxRoutingEnabled } = await import('../sandbox/sandbox-config')
+  if (isSandboxRoutingEnabled()) {
+    sandboxSpoolPoll = setInterval(() => {
+      try {
+        agentHookServer.drainSandboxHookSpool()
+      } catch {
+        // Best effort: a failed poll retries on the next tick.
+      }
+    }, 5_000)
   }
 
   // Why before the runtime and the PTY handlers: `setLocalPtyProvider` installs the daemon
@@ -192,6 +214,11 @@ async function startOrcadRuntime(
       isAgentStatusHooksEnabled(store.getSettings()) ? agentHookServer.buildPtyEnv() : {}
   })
 
+  // Why here: terminal handles are minted per ptyId into spawn env (ORCA_TERMINAL_HANDLE).
+  // Without a durable map, every orcad restart remints them and strands paired clients on the
+  // old handle. The store replays the same handle for the same ptyId (RESTART-RESILIENCE.md).
+  runtime.setTerminalHandlePersistenceDir(runtimeUserDataPath)
+
   // Why here too and not only on the desktop: nothing else republishes `session.tabs` when a
   // pane's status row changes, and orcad's whole job is serving paired clients.
   uninstallHookStatusRepublish = installHookStatusSessionTabsRepublish(
@@ -215,6 +242,22 @@ async function startOrcadRuntime(
 
   await runtime.refreshRestoredOrchestrationAuthority()
   await runtime.reconcileLegacyWorkerTerminals()
+
+  // Why here: the daemon is up and the inventory is warm, so this diffs the durable handle map
+  // against live PTYs and publishes the restart report (client event + terminal.list field) that
+  // tells paired clients which sessions reattached, remapped, or failed. Best-effort: a failed
+  // inventory must never fail the boot it was meant to observe.
+  try {
+    const report = await runtime.publishTerminalReattachReport()
+    if (report) {
+      console.error(
+        `[orcad] restart reattach: ${report.reattached.length} reattached, ` +
+          `${report.remapped.length} remapped, ${report.failed.length} failed`
+      )
+    }
+  } catch (error) {
+    console.error('[orcad] restart reattach report unavailable:', error)
+  }
 
   // Recovery binds terminal and dispatch identities; only now can startup observations be fenced.
   observedStatusCapture.attach(runtime)

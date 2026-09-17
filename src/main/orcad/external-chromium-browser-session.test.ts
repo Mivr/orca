@@ -14,6 +14,7 @@ import {
   ExternalChromiumBrowserSession,
   externalChromiumAgentBrowserEnvironment
 } from './external-chromium-browser-session'
+import { AGENT_BROWSER_GPU_FLAGS } from '../browser/agent-browser-gpu-flags'
 
 const BASE = {
   executablePath: '/opt/orca/chromium',
@@ -126,5 +127,190 @@ describe('orcad external-chromium agent-browser environment', () => {
     const issued = commands().map((args) => args.filter((arg) => !arg.startsWith('-')))
     expect(issued.some((args) => args.includes('close'))).toBe(true)
     expect(issued.some((args) => args.includes('open'))).toBe(true)
+  })
+
+  function gpuLaunch() {
+    return {
+      executablePath: BASE.executablePath,
+      provider: 'chromium' as const,
+      browserArgs: ['--no-sandbox', ...AGENT_BROWSER_GPU_FLAGS]
+    }
+  }
+
+  function installGpuStartMock(renderer: string, failFirstOpen = false): void {
+    let tabs = false
+    let opened = 0
+    runProcessMock.mockImplementation((spec: Spec) => {
+      const raw = [...(spec.args ?? [])]
+      let index = 0
+      while (['--session', '--profile', '--args'].includes(raw[index] ?? '')) {
+        index += 2
+      }
+      const verb = raw.slice(index, -1)[0]
+      if (verb === 'tab') {
+        return Promise.resolve({
+          code: 0,
+          signal: null,
+          stdout: JSON.stringify({
+            success: true,
+            data: tabs
+              ? { tabs: [{ active: true, tabId: 'tab-gpu', title: 'x', url: 'about:blank' }] }
+              : { tabs: [] }
+          }),
+          stderr: '',
+          timedOut: false
+        })
+      }
+      if (verb === 'open') {
+        opened += 1
+        if (failFirstOpen && opened === 1) {
+          return Promise.reject(new Error('spawn EXDEV'))
+        }
+        tabs = true
+        return Promise.resolve({
+          code: 0,
+          signal: null,
+          stdout: JSON.stringify({ success: true, data: {} }),
+          stderr: '',
+          timedOut: false
+        })
+      }
+      if (verb === 'eval') {
+        return Promise.resolve({
+          code: 0,
+          signal: null,
+          stdout: JSON.stringify({ success: true, data: renderer }),
+          stderr: '',
+          timedOut: false
+        })
+      }
+      return Promise.resolve({
+        code: 0,
+        signal: null,
+        stdout: JSON.stringify({ success: true, data: {} }),
+        stderr: '',
+        timedOut: false
+      })
+    })
+  }
+
+  // Why: hardware by default must not relaunch — the fallback path is for software only.
+  it('keeps the GPU launch when the renderer is hardware', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      installGpuStartMock(
+        'ANGLE (AMD, AMD Radeon RX 6700 XT (radeonsi navi22 LLVM 20.1.2 DRM 3.64 7.0.0-31-generic), OpenGL ES 3.2)'
+      )
+      const session = new ExternalChromiumBrowserSession(
+        '/opt/orca/agent-browser',
+        gpuLaunch(),
+        '/state'
+      )
+      await expect(session.start()).resolves.toBe('tab-gpu')
+      expect(warn).not.toHaveBeenCalled()
+      expect(session.glFallbackWarning).toBeNull()
+      const opens = runProcessMock.mock.calls.filter((call) =>
+        [...((call[0] as Spec).args ?? [])].includes('open')
+      )
+      expect(opens).toHaveLength(1)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  // Why: the fallback trigger — SwiftShader means the flags did not take, so
+  // relaunch without them and warn instead of serving software GL silently.
+  it('relaunches without GPU flags and warns when the renderer is software', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      installGpuStartMock(
+        'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)'
+      )
+      const session = new ExternalChromiumBrowserSession(
+        '/opt/orca/agent-browser',
+        gpuLaunch(),
+        '/state'
+      )
+      await expect(session.start()).resolves.toBe('tab-gpu')
+
+      const opens = runProcessMock.mock.calls.filter((call) =>
+        [...((call[0] as Spec).args ?? [])].includes('open')
+      )
+      expect(opens).toHaveLength(2)
+      const openPayload = (call: (typeof opens)[number]): string | undefined => {
+        const args = [...(((call[0] as Spec).args ?? []) as string[])]
+        const at = args.indexOf('--args')
+        return at === -1 ? undefined : args[at + 1]
+      }
+      expect(openPayload(opens[0])).toContain('--use-gl=angle')
+      // Relaunch drops the GPU flags but keeps the rest.
+      expect(openPayload(opens[1])).toBe('--no-sandbox')
+
+      expect(warn).toHaveBeenCalledOnce()
+      const message = String(warn.mock.calls[0]?.[0] ?? '')
+      expect(message.startsWith('BROWSER-GL-FALLBACK:')).toBe(true)
+      expect(message).toContain('software')
+      expect(session.glFallbackWarning).toBe(message)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('falls back without GPU flags when the GPU launch itself fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      installGpuStartMock('NO-WEBGL', true)
+      const session = new ExternalChromiumBrowserSession(
+        '/opt/orca/agent-browser',
+        gpuLaunch(),
+        '/state'
+      )
+      await expect(session.start()).resolves.toBe('tab-gpu')
+      const message = String(warn.mock.calls[0]?.[0] ?? '')
+      expect(message.startsWith('BROWSER-GL-FALLBACK:')).toBe(true)
+      expect(message).toContain('GPU launch failed')
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  // Why (#16367): a reused session may own the user's live browser — never
+  // probe it, and never close it for a GPU relaunch.
+  it('never probes a reused session, even with GPU flags configured', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      runProcessMock.mockImplementation((spec: Spec) => {
+        const raw = [...(spec.args ?? [])]
+        let index = 0
+        while (['--session', '--profile', '--args'].includes(raw[index] ?? '')) {
+          index += 2
+        }
+        const verb = raw.slice(index, -1)[0]
+        const data =
+          verb === 'tab'
+            ? { tabs: [{ active: true, tabId: 'tab-live', title: 'x', url: 'https://x.test' }] }
+            : {}
+        return Promise.resolve({
+          code: 0,
+          signal: null,
+          stdout: JSON.stringify({ success: true, data }),
+          stderr: '',
+          timedOut: false
+        })
+      })
+      const session = new ExternalChromiumBrowserSession(
+        '/opt/orca/agent-browser',
+        gpuLaunch(),
+        '/state'
+      )
+      await expect(session.start()).resolves.toBe('tab-live')
+      const verbs = commands().map((args) => args.filter((arg) => !arg.startsWith('-')))
+      expect(verbs.some((args) => args.includes('eval'))).toBe(false)
+      expect(verbs.some((args) => args.includes('close'))).toBe(false)
+      expect(verbs.some((args) => args.includes('open'))).toBe(false)
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
   })
 })

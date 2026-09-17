@@ -15,6 +15,7 @@
 import {
   SANDBOX_CONTAINER_ENV,
   pickSandboxEnv,
+  pickSandboxHookSpawnEnv,
   sandboxInnerShell
 } from '../../sandbox/sandbox-config'
 
@@ -31,7 +32,11 @@ export function buildSandboxExecRewrite(args: {
   env: Record<string, string>
 }): SandboxExecRewrite {
   const innerShell = sandboxInnerShell(args.hostShellPath)
-  const execEnv = pickSandboxEnv(args.env)
+  // Why two lists: the static allowlist is create-time secrets, while the
+  // hook plane is per-spawn routing (pane keys differ per pane in one
+  // container). Without these the in-sandbox hooks see no ORCA_PANE_KEY and
+  // even the spool fallback stays silent (`[ -n ... ] || return 0`).
+  const execEnv = { ...pickSandboxEnv(args.env), ...pickSandboxHookSpawnEnv(args.env) }
   const envFlags: string[] = []
   for (const [key, value] of Object.entries(execEnv)) {
     envFlags.push('-e', `${key}=${value}`)
