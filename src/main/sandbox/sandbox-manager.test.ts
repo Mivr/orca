@@ -56,6 +56,11 @@ function installFakeDocker(): void {
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'sandbox-manager-'))
   process.env.ORCA_SANDBOX_AGENTS = '1'
+  // Why stubbed: admission ensures orcad-owned hook dirs (spool, overlays)
+  // and the managed codex home — without stubs those mkdirs land in the real
+  // HOME instead of the fixture dir.
+  vi.stubEnv('ORCA_USER_DATA', join(dir, 'userdata'))
+  vi.stubEnv('ORCA_USER_DATA_PATH', join(dir, 'config-orca'))
   resetSandboxManagerForTest()
   installFakeDocker()
 })
@@ -148,6 +153,131 @@ describe('ensureSandboxForWorktree', () => {
     const optOutArgs = calls.find((call) => call.args[0] === 'run')?.args ?? []
     expect(optOutArgs).not.toContain('--device')
     expect(optOutArgs).not.toContain('--group-add')
+  })
+
+  it('stamps the hardware-GL AGENT_BROWSER_ARGS default into new sandboxes', async () => {
+    const { mkdirSync } = await import('node:fs')
+    const glPath = join(dir, 'wt-gpu-gl')
+    mkdirSync(glPath, { recursive: true })
+    await ensureSandboxForWorktree({ worktreeId: 'repo::/wt-gpu-gl', worktreePath: glPath })
+    const args = calls.find((call) => call.args[0] === 'run')?.args ?? []
+    const envIndex = args.indexOf(
+      'AGENT_BROWSER_ARGS=--use-gl=angle,--use-angle=gl-egl,--ignore-gpu-blocklist,--disable-gpu-sandbox'
+    )
+    expect(envIndex).toBeGreaterThan(-1)
+    expect(args[envIndex - 1]).toBe('-e')
+  })
+
+  it('honors the browser-GPU env override and empty opt-out', async () => {
+    const { mkdirSync } = await import('node:fs')
+    vi.stubEnv('ORCA_SANDBOX_BROWSER_GPU_ARGS', '--use-gl=swiftshader')
+    const overridePath = join(dir, 'wt-gpu-gl-override')
+    mkdirSync(overridePath, { recursive: true })
+    await ensureSandboxForWorktree({
+      worktreeId: 'repo::/wt-gpu-gl-override',
+      worktreePath: overridePath
+    })
+    const overrideArgs = calls.find((call) => call.args[0] === 'run')?.args ?? []
+    expect(overrideArgs).toContain('AGENT_BROWSER_ARGS=--use-gl=swiftshader')
+
+    vi.stubEnv('ORCA_SANDBOX_BROWSER_GPU_ARGS', '')
+    calls = []
+    const optOutPath = join(dir, 'wt-gpu-gl-optout')
+    mkdirSync(optOutPath, { recursive: true })
+    await ensureSandboxForWorktree({
+      worktreeId: 'repo::/wt-gpu-gl-optout',
+      worktreePath: optOutPath
+    })
+    const optOutArgs = calls.find((call) => call.args[0] === 'run')?.args ?? []
+    expect(optOutArgs.some((arg) => arg.startsWith('AGENT_BROWSER_ARGS='))).toBe(false)
+  })
+
+  it('stamps :ro git-auth mounts from the host home, never the whole home', async () => {
+    const { mkdirSync } = await import('node:fs')
+    const fakeHome = join(dir, 'fakehome')
+    mkdirSync(join(fakeHome, '.ssh'), { recursive: true })
+    mkdirSync(join(fakeHome, '.config', 'gh'), { recursive: true })
+    vi.stubEnv('HOME', fakeHome)
+    const worktreePath = join(dir, 'wt-auth')
+    mkdirSync(worktreePath, { recursive: true })
+    await ensureSandboxForWorktree({ worktreeId: 'repo::/wt-auth', worktreePath })
+    const args = calls.find((call) => call.args[0] === 'run')?.args ?? []
+    expect(args).toContain(`${fakeHome}/.ssh:/var/tmp/.ssh:ro`)
+    expect(args).toContain(`${fakeHome}/.config/gh:/var/tmp/.config/gh:ro`)
+    expect(args).not.toContain(`${fakeHome}:${fakeHome}`)
+    expect(args).not.toContain('/home/mihail:/home/mihail')
+  })
+
+  it('stamps CLI logins :rw so refresh writes back, skipping absent sources', async () => {
+    const { mkdirSync, writeFileSync } = await import('node:fs')
+    const fakeHome = join(dir, 'fakehome-cli')
+    mkdirSync(join(fakeHome, '.ssh'), { recursive: true })
+    writeFileSync(join(fakeHome, '.claude.json'), '{}')
+    mkdirSync(join(fakeHome, '.claude'), { recursive: true })
+    mkdirSync(join(fakeHome, '.codex'), { recursive: true })
+    mkdirSync(join(fakeHome, '.cursor'), { recursive: true })
+    mkdirSync(join(fakeHome, '.grok'), { recursive: true })
+    mkdirSync(join(fakeHome, '.gemini', 'antigravity-cli'), { recursive: true })
+    mkdirSync(join(fakeHome, '.config', 'gcloud'), { recursive: true })
+    mkdirSync(join(fakeHome, '.local', 'share', 'opencode'), { recursive: true })
+    vi.stubEnv('HOME', fakeHome)
+    const worktreePath = join(dir, 'wt-auth-cli')
+    mkdirSync(worktreePath, { recursive: true })
+    await ensureSandboxForWorktree({ worktreeId: 'repo::/wt-auth-cli', worktreePath })
+    const args = calls.find((call) => call.args[0] === 'run')?.args ?? []
+    expect(args).toContain(`${fakeHome}/.claude.json:/var/tmp/.claude.json:rw`)
+    expect(args).toContain(`${fakeHome}/.claude:/var/tmp/.claude:rw`)
+    expect(args).toContain(`${fakeHome}/.codex:/var/tmp/.codex:rw`)
+    expect(args).toContain(`${fakeHome}/.cursor:/var/tmp/.cursor:rw`)
+    expect(args).toContain(`${fakeHome}/.grok:/var/tmp/.grok:rw`)
+    expect(args).toContain(
+      `${fakeHome}/.gemini/antigravity-cli:/var/tmp/.gemini/antigravity-cli:rw`
+    )
+    expect(args).toContain(`${fakeHome}/.config/gcloud:/var/tmp/.config/gcloud:rw`)
+    expect(args).toContain(`${fakeHome}/.local/share/opencode:/var/tmp/.local/share/opencode:rw`)
+    // gh absent here → skipped, never shadowed with an empty dir.
+    expect(args.some((arg) => typeof arg === 'string' && arg.includes('/.config/gh'))).toBe(false)
+  })
+
+  it('stamps hook-plane mounts: scripts :ro, spool :rw, codex home + overlays :rw', async () => {
+    const { mkdirSync, writeFileSync } = await import('node:fs')
+    const fakeHome = join(dir, 'fakehome-hooks')
+    mkdirSync(join(fakeHome, '.orca', 'agent-hooks'), { recursive: true })
+    writeFileSync(join(fakeHome, '.orca', 'agent-hooks', 'agy-hook.sh'), '#!/bin/sh\n')
+    mkdirSync(join(fakeHome, '.gemini', 'config'), { recursive: true })
+    writeFileSync(join(fakeHome, '.gemini', 'config', 'hooks.json'), '{}')
+    vi.stubEnv('HOME', fakeHome)
+    const worktreePath = join(dir, 'wt-hooks')
+    mkdirSync(worktreePath, { recursive: true })
+    await ensureSandboxForWorktree({ worktreeId: 'repo::/wt-hooks', worktreePath })
+    const args = calls.find((call) => call.args[0] === 'run')?.args ?? []
+    const scriptsDir = join(fakeHome, '.orca', 'agent-hooks')
+    expect(args).toContain(`${scriptsDir}:${scriptsDir}:ro`)
+    expect(args).toContain(`${scriptsDir}:/var/tmp/.orca/agent-hooks:ro`)
+    expect(args).toContain(`${join(fakeHome, '.gemini', 'config')}:/var/tmp/.gemini/config:ro`)
+    // Orcad-owned dirs are ensured at admission even with no prior spawn.
+    const spoolDir = join(dir, 'userdata', 'agent-hooks', 'spool')
+    const overlaysDir = join(dir, 'userdata', 'opencode-config-overlays')
+    expect(args).toContain(`${spoolDir}:${spoolDir}:rw`)
+    expect(args).toContain(`${overlaysDir}:${overlaysDir}:rw`)
+    const codexHome = join(dir, 'config-orca', 'codex-runtime-home', 'home')
+    expect(args).toContain(`${codexHome}:${codexHome}:rw`)
+  })
+
+  it('opts out of git-auth mounts via ORCA_SANDBOX_AUTH_MOUNTS=', async () => {
+    const { mkdirSync } = await import('node:fs')
+    const fakeHome = join(dir, 'fakehome-optout')
+    mkdirSync(join(fakeHome, '.ssh'), { recursive: true })
+    mkdirSync(join(fakeHome, '.config', 'gh'), { recursive: true })
+    mkdirSync(join(fakeHome, '.codex'), { recursive: true })
+    vi.stubEnv('HOME', fakeHome)
+    vi.stubEnv('ORCA_SANDBOX_AUTH_MOUNTS', '')
+    const worktreePath = join(dir, 'wt-auth-optout')
+    mkdirSync(worktreePath, { recursive: true })
+    await ensureSandboxForWorktree({ worktreeId: 'repo::/wt-auth-optout', worktreePath })
+    const args = calls.find((call) => call.args[0] === 'run')?.args ?? []
+    expect(args.some((arg) => typeof arg === 'string' && arg.endsWith(':ro'))).toBe(false)
+    expect(args.some((arg) => typeof arg === 'string' && arg.endsWith(':rw'))).toBe(false)
   })
 
   it('reuses the live container without a second docker run', async () => {

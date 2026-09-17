@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   MAX_SANDBOX_SLOTS,
+  SANDBOX_HOME,
   SANDBOX_IMAGE,
   SANDBOX_SLOTS_FULL,
   isSandboxRoutingEnabled,
   pickSandboxEnv,
+  pickSandboxHookSpawnEnv,
+  sandboxAuthMounts,
   sandboxBindMap,
   sandboxContainerName,
   sandboxDriDevices,
@@ -44,6 +47,37 @@ describe('sandbox-config', () => {
       ORCA_SANDBOX_NAME: 'orca-sandbox-x'
     })
     expect(picked).toEqual({ TERM: 'xterm-256color', ANTHROPIC_API_KEY: 'secret' })
+  })
+
+  it('passes per-spawn hook coords into the sandbox, never stamps or secrets', () => {
+    const picked = pickSandboxHookSpawnEnv({
+      ORCA_AGENT_HOOK_PORT: '1234',
+      ORCA_AGENT_HOOK_TOKEN: 'tok',
+      ORCA_AGENT_HOOK_ENV: 'production',
+      ORCA_AGENT_HOOK_VERSION: '1',
+      ORCA_AGENT_HOOK_TRANSPORT: 'raw-json-v1',
+      ORCA_AGENT_HOOK_ENDPOINT: '/home/mihail/.orca-orcad-data/agent-hooks/endpoint.env',
+      ORCA_PANE_KEY: 'tab:leaf',
+      ORCA_TAB_ID: 'tab',
+      ORCA_WORKTREE_ID: 'repo::/wt',
+      ORCA_AGENT_LAUNCH_TOKEN: 'launch',
+      CODEX_HOME: '/home/mihail/.config/orca/codex-runtime-home/home',
+      ORCA_CODEX_HOME: '/home/mihail/.config/orca/codex-runtime-home/home',
+      OPENCODE_CONFIG_DIR: '/home/mihail/.orca-orcad-data/opencode-config-overlays/x',
+      ORCA_OPENCODE_CONFIG_DIR: '/home/mihail/.orca-orcad-data/opencode-config-overlays/x',
+      ORCA_OPENCODE_SOURCE_CONFIG_DIR: '/home/mihail/.config/opencode',
+      GROK_HOME: '/home/mihail/.grok',
+      HOME: '/home/mihail',
+      SSH_AUTH_SOCK: '/run/agent.sock',
+      ORCA_SANDBOX_NAME: 'orca-sandbox-x'
+    })
+    expect(picked.ORCA_PANE_KEY).toBe('tab:leaf')
+    expect(picked.CODEX_HOME).toBe('/home/mihail/.config/orca/codex-runtime-home/home')
+    expect(picked.OPENCODE_CONFIG_DIR).toContain('opencode-config-overlays')
+    expect(picked).not.toHaveProperty('HOME')
+    expect(picked).not.toHaveProperty('SSH_AUTH_SOCK')
+    expect(picked).not.toHaveProperty('ORCA_SANDBOX_NAME')
+    expect(pickSandboxHookSpawnEnv({ TERM: 'xterm' })).toEqual({})
   })
 
   it('resolves the inner shell by image-known names, else bash', () => {
@@ -88,5 +122,40 @@ describe('sandbox-config', () => {
       'render'
     ])
     expect(sandboxGpuGroups({ ORCA_SANDBOX_GPU_GROUPS: '' })).toEqual([])
+  })
+
+  it('stamps container HOME for auth-mount destinations', () => {
+    expect(SANDBOX_HOME).toBe('/var/tmp')
+  })
+
+  it('enables all auth mounts by default, subsets via env, empty opts out', () => {
+    expect(sandboxAuthMounts({})).toEqual([
+      'ssh',
+      'gh',
+      'git-hooks',
+      'gitcookies',
+      'claude-json',
+      'claude',
+      'codex',
+      'cursor',
+      'grok',
+      'gemini-antigravity',
+      'gcloud',
+      'opencode',
+      'hook-scripts-abs',
+      'hook-scripts-home',
+      'gemini-config',
+      'hook-endpoint',
+      'hook-spool',
+      'codex-runtime-home',
+      'opencode-overlays'
+    ])
+    expect(sandboxAuthMounts({ ORCA_SANDBOX_AUTH_MOUNTS: 'ssh,gh' })).toEqual(['ssh', 'gh'])
+    expect(sandboxAuthMounts({ ORCA_SANDBOX_AUTH_MOUNTS: '' })).toEqual([])
+    expect(sandboxAuthMounts({ ORCA_SANDBOX_AUTH_MOUNTS: 'ssh,bogus' })).toEqual(['ssh'])
+    expect(sandboxAuthMounts({ ORCA_SANDBOX_AUTH_MOUNTS: 'codex,opencode' })).toEqual([
+      'codex',
+      'opencode'
+    ])
   })
 })

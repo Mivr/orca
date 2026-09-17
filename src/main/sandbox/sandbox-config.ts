@@ -61,6 +61,9 @@ export const SANDBOX_CPUS = '2.0'
 export const SANDBOX_CONTAINER_ENV = 'ORCA_SANDBOX_NAME'
 export const SANDBOX_WORKTREE_ENV = 'ORCA_SANDBOX_WORKTREE'
 
+/** Container HOME stamped at create (`-e HOME=...` in the manager). */
+export const SANDBOX_HOME = '/var/tmp'
+
 /** Master switch — desktop and unpaired hosts never route unless this is set. */
 export const SANDBOX_ROUTING_ENV = 'ORCA_SANDBOX_AGENTS'
 
@@ -141,6 +144,95 @@ export function pickSandboxEnv(env: Record<string, string>): Record<string, stri
     }
   }
   return picked
+}
+
+/**
+ * Per-spawn hook-plane coords for the sandbox (cutover7). The static allowlist
+ * above cannot carry these: pane keys and the hook token differ per spawn while
+ * a container is shared per worktree, so they ride `docker exec -e` per spawn
+ * (see sandbox-exec-rewrite), never the create-time env file. Values are
+ * routing coords, not host secrets: the hook token authenticates loopback POSTs
+ * that cannot even route from the sandbox (bridge network), and the spool
+ * fallback that does route needs no secret at all. Never log values.
+ */
+export const SANDBOX_HOOK_SPAWN_ENV_KEYS = [
+  'ORCA_AGENT_HOOK_PORT',
+  'ORCA_AGENT_HOOK_TOKEN',
+  'ORCA_AGENT_HOOK_ENV',
+  'ORCA_AGENT_HOOK_VERSION',
+  'ORCA_AGENT_HOOK_TRANSPORT',
+  'ORCA_AGENT_HOOK_ENDPOINT',
+  'ORCA_PANE_KEY',
+  'ORCA_TAB_ID',
+  'ORCA_WORKTREE_ID',
+  'ORCA_AGENT_LAUNCH_TOKEN',
+  'CODEX_HOME',
+  'ORCA_CODEX_HOME',
+  'OPENCODE_CONFIG_DIR',
+  'ORCA_OPENCODE_CONFIG_DIR',
+  'ORCA_OPENCODE_SOURCE_CONFIG_DIR',
+  'GROK_HOME'
+] as const
+
+export function pickSandboxHookSpawnEnv(env: Record<string, string>): Record<string, string> {
+  const picked: Record<string, string> = {}
+  for (const key of SANDBOX_HOOK_SPAWN_ENV_KEYS) {
+    const value = env[key]
+    if (value !== undefined) {
+      picked[key] = value
+    }
+  }
+  return picked
+}
+
+/**
+ * Git-auth + agent-CLI login allowlist for the sandbox (auth-mounts pattern).
+ * `ssh`/`gh`/`git-hooks`/`gitcookies` = static identity, always `:ro`
+ * (rotation happens on the host, then respawn — see GIT-AUTH.md).
+ * The eight CLI-login keys (`claude-json`/`claude`/`codex`/`cursor`/`grok`/
+ * `gemini-antigravity`/`gcloud`/`opencode`) mount `:rw`: CLIs refresh tokens
+ * in place and the write must land back on the host store, otherwise the
+ * login dies with the session. Trust is the worktree's: the sandbox already
+ * holds the worktree + main `.git` `:rw`, so a `:rw` auth mount adds no new
+ * boundary — host-owned files, never baked, never logged.
+ * Override with e.g. `ORCA_SANDBOX_AUTH_MOUNTS=ssh,gh`; empty opts out.
+ * Unknown keys are ignored. Missing host sources are skipped, never shadowed.
+ */
+export const SANDBOX_AUTH_MOUNT_KEYS = [
+  'ssh',
+  'gh',
+  'git-hooks',
+  'gitcookies',
+  'claude-json',
+  'claude',
+  'codex',
+  'cursor',
+  'grok',
+  'gemini-antigravity',
+  'gcloud',
+  'opencode',
+  // Cutover7 hook plane: host-preinstalled managed hook scripts (absolute
+  // `/home/mihail/.orca/agent-hooks/*.sh` command paths need the same-path
+  // mount; $HOME-relative callers need the /var/tmp twin), the agy hook
+  // config (the only six-CLI hook config outside the login mounts), orcad's
+  // hook endpoint dir (:ro, follows endpoint renames) + spool subdir (:rw,
+  // the bridge-network delivery path), the managed codex home, and the
+  // opencode overlay root. ro/rw per mount justified at the spec site.
+  'hook-scripts-abs',
+  'hook-scripts-home',
+  'gemini-config',
+  'hook-endpoint',
+  'hook-spool',
+  'codex-runtime-home',
+  'opencode-overlays'
+] as const
+export type SandboxAuthMountKey = (typeof SANDBOX_AUTH_MOUNT_KEYS)[number]
+
+export const SANDBOX_AUTH_MOUNTS_ENV = 'ORCA_SANDBOX_AUTH_MOUNTS'
+
+export function sandboxAuthMounts(env: NodeJS.ProcessEnv = process.env): SandboxAuthMountKey[] {
+  const wanted = parseCsvEnv(env[SANDBOX_AUTH_MOUNTS_ENV]) ?? [...SANDBOX_AUTH_MOUNT_KEYS]
+  return SANDBOX_AUTH_MOUNT_KEYS.filter((key) => wanted.includes(key))
 }
 
 /**

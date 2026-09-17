@@ -6,15 +6,25 @@
  * reaping on orcad start. The daemon never calls this — it only sees the
  * stamped spawn env and rewrites the shell into `docker exec`.
  */
-import { existsSync, writeFileSync, chmodSync, unlinkSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { runProcess } from '../../shared/child-process/run-process'
-import { resetBindMountsForTest, resolveSandboxMounts, type HostMount } from './sandbox-bind-mounts'
+import { cleanupSandboxEnvFile, writeSandboxEnvFile } from './sandbox-env-file'
+import { resolveSandboxHookMountDirs } from './sandbox-hook-mounts'
+import {
+  AGENT_BROWSER_ARGS_ENV,
+  joinAgentBrowserArgs,
+  sandboxBrowserGpuArgs
+} from '../browser/agent-browser-gpu-flags'
+import {
+  resetBindMountsForTest,
+  resolveSandboxMounts,
+  resolveSandboxAuthMounts,
+  type HostMount
+} from './sandbox-bind-mounts'
 import {
   MAX_SANDBOX_SLOTS,
   SANDBOX_CONTAINER_ENV,
   SANDBOX_CPUS,
+  SANDBOX_HOME,
   SANDBOX_IMAGE,
   SANDBOX_MANAGED_LABEL,
   SANDBOX_MEMORY,
@@ -22,7 +32,6 @@ import {
   SANDBOX_WORKTREE_ENV,
   SANDBOX_WORKTREE_LABEL,
   isSandboxRoutingEnabled,
-  pickSandboxEnv,
   sandboxContainerName,
   sandboxDriDevices,
   sandboxGpuGroups
@@ -146,7 +155,24 @@ export async function ensureSandboxForWorktree(args: {
     throw new SandboxSlotsFullError(args.worktreeId)
   }
   const { mounts } = await resolveSandboxMounts(args.worktreePath, dockerRunner)
+  // Auth rides host-owned bind mounts (never baked or logged): static git
+  // identity `:ro`, CLI logins `:rw` so token refresh writes back to the
+  // host store and survives the session. Same trust as the `:rw` worktree +
+  // main `.git` mounts below — no new boundary. Missing host sources are
+  // skipped, never shadowed with empty dirs.
+  // Cutover7: hook-plane mounts ride along (scripts `:ro`, spool `:rw`,
+  // codex home + opencode overlays `:rw`). Per-spawn hook coords
+  // (ORCA_AGENT_HOOK_*/ORCA_PANE_KEY/...) cannot ride the create-time env
+  // file — a container is shared per worktree while panes differ — so they
+  // cross per spawn via `docker exec -e` (see sandbox-exec-rewrite).
+  const authMounts = await resolveSandboxAuthMounts(dockerRunner, {
+    hookDirs: resolveSandboxHookMountDirs()
+  })
   const envFile = writeSandboxEnvFile(args.env)
+  // Why stamped, not baked: hosts without DRI opt out via
+  // ORCA_SANDBOX_BROWSER_GPU_ARGS='' and every agent-browser launch inside
+  // inherits the default without per-command flags.
+  const browserGpuArgs = joinAgentBrowserArgs(sandboxBrowserGpuArgs())
   const runArgs = [
     'run',
     '-d',
@@ -165,12 +191,15 @@ export async function ensureSandboxForWorktree(args: {
     // HOME (/tmp) for helper binaries. Container-private writable layer;
     // phase 2 owns a per-sandbox home volume.
     '-e',
-    'HOME=/var/tmp',
+    `HOME=${SANDBOX_HOME}`,
+    // Hardware-GL default for in-sandbox agent-browser launches.
+    ...(browserGpuArgs ? ['-e', `${AGENT_BROWSER_ARGS_ENV}=${browserGpuArgs}`] : []),
     '--label',
     `${SANDBOX_MANAGED_LABEL}=1`,
     '--label',
     `${SANDBOX_WORKTREE_LABEL}=${args.worktreeId}`,
     ...mounts.flatMap((mount) => ['-v', mount]),
+    ...authMounts.flatMap((mount) => ['-v', mount]),
     '-w',
     args.worktreePath,
     ...(envFile ? ['--env-file', envFile] : []),
@@ -191,25 +220,6 @@ export async function ensureSandboxForWorktree(args: {
   liveSandboxByWorktree.set(args.worktreeId, name)
   refreshListedNames([...names, name])
   return name
-}
-
-/** Secrets cross at create via a host-owned 0600 env file, never baked or logged. */
-function writeSandboxEnvFile(env: Record<string, string> | undefined): string | null {
-  const picked = pickSandboxEnv(env ?? {})
-  const entries = Object.entries(picked)
-  if (entries.length === 0) {
-    return null
-  }
-  const path = join(tmpdir(), `orca-sandbox-env-${process.pid}-${Date.now()}`)
-  writeFileSync(path, `${entries.map(([key, value]) => `${key}=${value}`).join('\n')}\n`, {
-    mode: 0o600
-  })
-  try {
-    chmodSync(path, 0o600)
-  } catch {
-    // Best effort: writeFileSync mode already applied on creation.
-  }
-  return path
 }
 
 /** Stop+remove on worktree archive. Best-effort: a missing container is success. */
@@ -323,18 +333,5 @@ export async function stampSandboxSpawnEnv(args: {
   return {
     [SANDBOX_CONTAINER_ENV]: name,
     [SANDBOX_WORKTREE_ENV]: args.worktreeId
-  }
-}
-
-export function cleanupSandboxEnvFile(envFileArg: string): void {
-  if (!envFileArg.startsWith(`${tmpdir()}/orca-sandbox-env-`)) {
-    return
-  }
-  try {
-    if (existsSync(envFileArg)) {
-      unlinkSync(envFileArg)
-    }
-  } catch {
-    // Best effort.
   }
 }

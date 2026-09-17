@@ -8,9 +8,16 @@
  * /proc/mounts — so the sibling sandbox gets a working host source while its
  * destination stays same-path.
  */
-import { readFileSync } from 'node:fs'
+import { readFileSync, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { sandboxBindMap, type HostMount } from './sandbox-config'
+import {
+  SANDBOX_HOME,
+  sandboxAuthMounts,
+  sandboxBindMap,
+  type HostMount,
+  type SandboxAuthMountKey
+} from './sandbox-config'
+import { sandboxHookMountSpecs, type SandboxHookMountDirs } from './sandbox-hook-mounts'
 
 export type { HostMount }
 
@@ -125,6 +132,200 @@ function readProcMounts(): HostMount[] {
 
 function unescapeMountPath(path: string): string {
   return path.replace(/\\040/g, ' ').replace(/\\134/g, '\\')
+}
+
+export type SandboxAuthMountSpec = {
+  key: SandboxAuthMountKey
+  hostPath: string
+  containerPath: string
+  kind: 'dir' | 'file'
+  // Why per-mount mode: static identity (ssh keys, gh token, hooks, cookies)
+  // is host-rotated and never written from the sandbox, so `:ro` keeps the
+  // sandbox from corrupting host git access. CLI logins refresh tokens in
+  // place (`:rw`) — a `:ro` login mount would die on first refresh and the
+  // login would not survive the session it was meant to persist.
+  mode: 'ro' | 'rw'
+}
+
+/**
+ * Orcad-owned hook-plane dirs (type re-export; impl in sandbox-hook-mounts).
+ * Omitted → hook mounts are skipped (fail closed).
+ */
+export type { SandboxHookMountDirs } from './sandbox-hook-mounts'
+
+/**
+ * Git-auth + agent-CLI login mount specs. ssh/gh resolve HOME-relative by
+ * tool convention (ssh ~/.ssh, gh $HOME/.config/gh), so their destinations
+ * hang under the stamped SANDBOX_HOME — no GIT_SSH_COMMAND/GH_CONFIG_DIR
+ * overrides and no key-name knowledge in code; host ssh semantics
+ * (IdentityFile, IdentitiesOnly, known_hosts) survive byte-for-byte, which
+ * is what keeps host-key verification working. git-hooks/.gitcookies are
+ * absolute paths baked in the image /etc/gitconfig, so they mount same-path.
+ * CLI logins all resolve under the stamped SANDBOX_HOME too: the manager
+ * stamps only HOME (XDG_DATA_HOME is NOT in the env allowlist), so
+ * ~/.local/share/opencode, ~/.config/gcloud, etc. land under /var/tmp with
+ * zero per-tool env overrides. Destinations mirror the existing
+ * /var/tmp/.ssh pattern (passwd home is /var/tmp via the image usermod —
+ * the ssh-trap fix — so getpwuid and $HOME agree on every path below).
+ *
+ * Cutover7 hook plane (one row per CLI below): claude/codex/cursor/grok hook
+ * configs already live inside their `:rw` login mounts, so they need no new
+ * mount — only agy (`~/.gemini/config`, outside the antigravity-cli login
+ * mount) does. Managed hook COMMANDS are absolute host paths
+ * (`/home/mihail/.orca/agent-hooks/*.sh`), hence the same-path scripts mount;
+ * the /var/tmp twin covers $HOME-relative callers (remote-install shape).
+ */
+export function sandboxAuthMountSpecs(
+  orcadHome: string = process.env.HOME ?? '/home/mihail',
+  hookDirs?: SandboxHookMountDirs
+): SandboxAuthMountSpec[] {
+  return [
+    {
+      key: 'ssh',
+      hostPath: `${orcadHome}/.ssh`,
+      containerPath: `${SANDBOX_HOME}/.ssh`,
+      kind: 'dir',
+      mode: 'ro'
+    },
+    {
+      key: 'gh',
+      hostPath: `${orcadHome}/.config/gh`,
+      containerPath: `${SANDBOX_HOME}/.config/gh`,
+      kind: 'dir',
+      mode: 'ro'
+    },
+    {
+      key: 'git-hooks',
+      hostPath: `${orcadHome}/.config/git-hooks`,
+      containerPath: '/home/mihail/.config/git-hooks',
+      kind: 'dir',
+      mode: 'ro'
+    },
+    {
+      key: 'gitcookies',
+      hostPath: `${orcadHome}/.gitcookies`,
+      containerPath: '/home/mihail/.gitcookies',
+      kind: 'file',
+      mode: 'ro'
+    },
+    // claude: OAuth + subscription state; the CLI rewrites both on refresh.
+    {
+      key: 'claude-json',
+      hostPath: `${orcadHome}/.claude.json`,
+      containerPath: `${SANDBOX_HOME}/.claude.json`,
+      kind: 'file',
+      mode: 'rw'
+    },
+    {
+      key: 'claude',
+      hostPath: `${orcadHome}/.claude`,
+      containerPath: `${SANDBOX_HOME}/.claude`,
+      kind: 'dir',
+      mode: 'rw'
+    },
+    // codex: auth.json + sessions/state; refresh writes back into the dir.
+    {
+      key: 'codex',
+      hostPath: `${orcadHome}/.codex`,
+      containerPath: `${SANDBOX_HOME}/.codex`,
+      kind: 'dir',
+      mode: 'rw'
+    },
+    // cursor: whole dir, best effort — a keyring-bound token (libsecret /
+    // gnome-keyring) does NOT live in files, so a keyring login will NOT
+    // persist via this mount; file-based state still carries over.
+    {
+      key: 'cursor',
+      hostPath: `${orcadHome}/.cursor`,
+      containerPath: `${SANDBOX_HOME}/.cursor`,
+      kind: 'dir',
+      mode: 'rw'
+    },
+    // grok: OAuth session (auth.json) + quota state; refresh writes back.
+    {
+      key: 'grok',
+      hostPath: `${orcadHome}/.grok`,
+      containerPath: `${SANDBOX_HOME}/.grok`,
+      kind: 'dir',
+      mode: 'rw'
+    },
+    // agy (antigravity): CLI state dir; pairs with gcloud below (ADC lives
+    // in gcloud legacy_credentials). Both refresh in place.
+    {
+      key: 'gemini-antigravity',
+      hostPath: `${orcadHome}/.gemini/antigravity-cli`,
+      containerPath: `${SANDBOX_HOME}/.gemini/antigravity-cli`,
+      kind: 'dir',
+      mode: 'rw'
+    },
+    // gcloud: credentials.db / access_tokens.db are rewritten on token
+    // refresh, which fails under `:ro` — `:rw` is what makes refresh work.
+    {
+      key: 'gcloud',
+      hostPath: `${orcadHome}/.config/gcloud`,
+      containerPath: `${SANDBOX_HOME}/.config/gcloud`,
+      kind: 'dir',
+      mode: 'rw'
+    },
+    // opencode: auth.json + live SQLite state (opencode.db*-wal). Same-file
+    // bind mount keeps SQLite locking correct (one filesystem, fcntl locks
+    // serialize host + sandbox writers), so `:rw` is safe; `:ro` would break
+    // auth refresh AND crash the daemon's state writes. Trust is the
+    // worktree's (already `:rw`): no new boundary.
+    {
+      key: 'opencode',
+      hostPath: `${orcadHome}/.local/share/opencode`,
+      containerPath: `${SANDBOX_HOME}/.local/share/opencode`,
+      kind: 'dir',
+      mode: 'rw'
+    },
+    // Hook plane lives in sandbox-hook-mounts (lint cap): scripts :ro x2,
+    // agy config :ro, endpoint :ro, spool :rw, codex home + overlays :rw.
+    ...(hookDirs ? sandboxHookMountSpecs(hookDirs) : [])
+  ]
+}
+
+/**
+ * Resolve enabled auth mounts to `src:dst:mode` entries. Missing or
+ * wrong-kind host sources are skipped: docker would otherwise create an
+ * empty dir over the mountpoint and silently shadow the real credential
+ * (same reason auth-mounts/check-auth.sh pre-flights).
+ */
+export async function resolveSandboxAuthMounts(
+  runDocker: BindMountDockerRunner,
+  opts: { orcadHome?: string; env?: NodeJS.ProcessEnv; hookDirs?: SandboxHookMountDirs } = {}
+): Promise<string[]> {
+  const wanted = new Set(sandboxAuthMounts(opts.env ?? process.env))
+  const mounts: string[] = []
+  for (const spec of sandboxAuthMountSpecs(
+    opts.orcadHome ?? process.env.HOME ?? '/home/mihail',
+    opts.hookDirs
+  )) {
+    if (!wanted.has(spec.key)) {
+      continue
+    }
+    // Gate on the orcad-visible path, mount the host-resolved source: under a
+    // bind map the resolved source is invisible from inside orcad, while the
+    // spec path is what orcad can actually stat.
+    if (!authSourcePresent(spec.hostPath, spec.kind)) {
+      continue
+    }
+    const source = await resolveHostBindSourceAsync(spec.hostPath, runDocker)
+    mounts.push(`${source}:${spec.containerPath}:${spec.mode}`)
+  }
+  return mounts
+}
+
+function authSourcePresent(source: string, kind: 'dir' | 'file'): boolean {
+  try {
+    if (!existsSync(source)) {
+      return false
+    }
+    const stat = statSync(source)
+    return kind === 'dir' ? stat.isDirectory() : stat.isFile()
+  } catch {
+    return false
+  }
 }
 
 export async function resolveSandboxMounts(
