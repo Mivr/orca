@@ -35,6 +35,7 @@ export class OrcaRuntimeWithBuildPtyTerminalSummary extends OrcaRuntimeWithGetPt
       writable: pty.connected,
       lastOutputAt: pty.lastOutputAt,
       preview: pty.preview,
+      ...(pty.rootProcessId != null ? { processId: pty.rootProcessId } : {}),
       ...(pty.lastExitCause ? { exitCause: pty.lastExitCause } : {}),
       ...this.terminalExecutionHostField(pty.ptyId, pty.worktreeId),
       ...this.resolvePaneAgentIdentityField(

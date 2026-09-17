@@ -29,6 +29,7 @@ export class OrcaRuntimeWithRecordPtyWorktree extends OrcaRuntimeWithRefreshRepo
         | 'isWsl'
         | 'wslDistro'
         | 'incarnationId'
+        | 'rootProcessId'
         | 'agentSessionOwners'
       >
     > = {}
@@ -49,6 +50,7 @@ export class OrcaRuntimeWithRecordPtyWorktree extends OrcaRuntimeWithRefreshRepo
       pty = {
         ptyId,
         incarnationId: state.incarnationId ?? null,
+        rootProcessId: state.rootProcessId ?? null,
         worktreeId,
         connectionId,
         runtimeSessionOwned: state.runtimeSessionOwned ?? false,
@@ -134,6 +136,9 @@ export class OrcaRuntimeWithRecordPtyWorktree extends OrcaRuntimeWithRefreshRepo
     }
     if (state.isWsl !== undefined) {
       pty.isWsl = state.isWsl
+    }
+    if (state.rootProcessId !== undefined) {
+      pty.rootProcessId = state.rootProcessId
     }
     if (state.wslDistro !== undefined) {
       pty.wslDistro = state.wslDistro

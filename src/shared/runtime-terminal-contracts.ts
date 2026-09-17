@@ -28,6 +28,10 @@ export type RuntimeTerminalSummary = {
   writable: boolean
   lastOutputAt: number | null
   preview: string
+  // Host-side root pid of this terminal's PTY incarnation, when the host proved one. Absent on
+  // older hosts; a restart re-mints it, so verify treats pid drift with a stable handle as a
+  // reattach, not a loss.
+  processId?: number
   /** Host-resolved agent identity for action consumers; absent when unknown or unsupported. */
   agentIdentity?: TuiAgent
   /** Absent while running or when the host predates the field; never infer a clean finish. */

@@ -46,6 +46,41 @@ export type RuntimeClientEvent =
       startup?: WorktreeStartupLaunch
       defaultTabs?: WorktreeDefaultTabsLaunch
     }
+  // Why: after an orcad/daemon restart, reattached PTYs may carry new incarnations (and, when the
+  // durable handle map missed, new handles). A client holding the old handle would otherwise see
+  // its session vanish with no explanation — this notice names the remapped handles and the
+  // sessions that failed to reattach, with reasons. See RESTART-RESILIENCE.md.
+  | { type: 'terminalReattachNotice'; report: TerminalReattachReport }
+
+export type TerminalReattachFailedRow = {
+  ptyId: string
+  handle: string | null
+  reason: string
+}
+
+export type TerminalReattachRow = {
+  ptyId: string
+  handle: string
+  incarnationChanged: boolean
+  worktreeId: string | null
+}
+
+export type TerminalHandleRemap = {
+  ptyId: string
+  oldHandle: string | null
+  newHandle: string
+  oldIncarnationId: string | null
+  newIncarnationId: string | null
+  at: number
+  reason: string
+}
+
+export type TerminalReattachReport = {
+  at: number
+  reattached: TerminalReattachRow[]
+  remapped: TerminalHandleRemap[]
+  failed: TerminalReattachFailedRow[]
+}
 
 export type RuntimeClientEventStreamMessage =
   | ({ type: 'ready'; subscriptionId: string } & {

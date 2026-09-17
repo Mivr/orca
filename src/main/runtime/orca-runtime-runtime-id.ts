@@ -30,6 +30,7 @@ import { ClientSessionTabSelectionStore } from './client-session-tab-selection'
 import { WorktreeTerminalMutationLock } from './worktree-terminal-mutation-lock'
 import { RemoteRuntimeTerminalCreateIdempotency } from './remote-runtime-terminal-create-idempotency'
 import type { PtyIncarnationId } from '../../shared/pty-incarnation'
+import { createTerminalHandleStore } from './terminal-handle-persistence'
 import type { MobileSessionTabsNotifyCoalescer } from './mobile-session-tabs-notify-coalescer'
 import { createMobileSessionTabsNotifyCoalescer } from './mobile-session-tabs-notify-coalescer'
 import type { MobileSessionTabsAgentStatusHeartbeat } from './mobile-session-tabs-agent-status-heartbeat'
@@ -287,6 +288,12 @@ export class OrcaRuntimeWithRuntimeId {
   protected handleByPtyId = new Map<string, string>()
 
   protected handleByPtyIncarnation = new Map<string, PtyIncarnationHandleRecord>()
+
+  // Why durable: preAllocateHandleForPty mints ORCA_TERMINAL_HANDLE per ptyId and the map died
+  // with the process, so every orcad restart reminted handles and stranded paired clients on the
+  // old one. The store replays the same handle for the same ptyId after a restart (see
+  // RESTART-RESILIENCE.md). In-memory until setTerminalHandlePersistenceDir enables the file.
+  protected readonly terminalHandleStore = createTerminalHandleStore()
 
   // A provider announces a replacement before the spawn commit can bind its
   // pane. Keep the predecessor aliases fenced during that hand-off window.

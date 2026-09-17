@@ -47,6 +47,9 @@ export type RuntimeLeafRecord = RuntimeSyncedLeaf &
 export type RuntimePtyWorktreeRecord = RuntimeTerminalTailState & {
   ptyId: string
   incarnationId: PtyIncarnationId | null
+  /** Host-side root pid of this PTY incarnation, when the provider proved one. Survives no
+   *  restart by itself, but lets snapshot/verify name the exact process a row points at. */
+  rootProcessId?: number | null
   worktreeId: string
   connectionId: string | null
   runtimeSessionOwned: boolean

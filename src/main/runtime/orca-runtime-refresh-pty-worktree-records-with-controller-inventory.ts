@@ -217,6 +217,7 @@ export class OrcaRuntimeWithRefreshPtyWorktreeRecordsWithControllerInventory ext
         const pty = this.recordPtyWorktree(session.id, worktreeId, {
           connected: true,
           ...(session.incarnationId ? { incarnationId: session.incarnationId } : {}),
+          ...(session.rootProcessId !== undefined ? { rootProcessId: session.rootProcessId } : {}),
           agentSessionOwners: session.incarnationId ? (session.agentSessionOwners ?? []) : [],
           ...(session.wslDistro !== undefined
             ? { isWsl: Boolean(session.wslDistro), wslDistro: session.wslDistro }

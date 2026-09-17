@@ -180,6 +180,7 @@ export class OrcaRuntimeWithWriteOrchestrationPointerPty extends OrcaRuntimeWith
       writable: provenAbsent ? false : leaf.writable,
       lastOutputAt: leaf.lastOutputAt,
       preview: leaf.preview,
+      ...(pty?.rootProcessId != null ? { processId: pty.rootProcessId } : {}),
       ...(leaf.lastExitCause ? { exitCause: leaf.lastExitCause } : {}),
       ...this.terminalExecutionHostField(leaf.ptyId, leaf.worktreeId),
       ...this.resolvePaneAgentIdentityField(

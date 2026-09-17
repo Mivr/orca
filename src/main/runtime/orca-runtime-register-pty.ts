@@ -44,15 +44,31 @@ export class OrcaRuntimeWithRegisterPty extends OrcaRuntimeWithInvalidateAllHand
       // Drop every alias for the predecessor; a newly preallocated handle is retained only when
       // the caller can prove it is the replacement's handle.
       const directHandle = this.handleByPtyId.get(ptyId)
-      const canPreserveReplacementHandle =
+      // Why the stable-handle fallback: after an orcad restart the in-memory direct handle is
+      // gone, but the persisted one names the same reattached PTY. Preserving it here keeps the
+      // client's handle working across the restart instead of reminting (RESTART-RESILIENCE.md).
+      const stableHandle =
         replacementHandle !== undefined &&
-        replacementHandle.startsWith('term_') &&
-        directHandle === replacementHandle &&
-        !pendingReplacement?.staleHandles.has(replacementHandle)
+        directHandle === undefined &&
+        this.resolveStableTerminalHandle(ptyId) === replacementHandle
+          ? replacementHandle
+          : undefined
+      const canPreserveReplacementHandle =
+        (replacementHandle !== undefined &&
+          replacementHandle.startsWith('term_') &&
+          directHandle === replacementHandle &&
+          !pendingReplacement?.staleHandles.has(replacementHandle)) ||
+        stableHandle !== undefined
       const invalidated = this.invalidateAllHandlesForPty(
         ptyId,
         canPreserveReplacementHandle ? replacementHandle : undefined
       )
+      if (stableHandle !== undefined) {
+        // The in-memory direct alias died with the old process; re-seat the durable one so later
+        // reads resolve the same handle the client already holds. The incarnation-tracking note
+        // below records it against the replacement incarnation.
+        this.handleByPtyId.set(ptyId, stableHandle)
+      }
       if (binding?.incarnationId) {
         this.rememberPtyHandleReplacementFence(
           ptyId,
@@ -80,6 +96,19 @@ export class OrcaRuntimeWithRegisterPty extends OrcaRuntimeWithInvalidateAllHand
       ...(binding && paneKey ? { tabId: binding.tabId, paneKey } : {}),
       ...(binding?.incarnationId ? { incarnationId: binding.incarnationId } : {})
     })
+    // Why: the durable handle map must track the CURRENT incarnation, or a later preAllocate
+    // cannot tell a same-boot replacement (must mint fresh) from a restart reattach (must
+    // replay). Noting the live direct alias also logs the old→new remap when it changed.
+    const liveDirectHandle = this.handleByPtyId.get(ptyId)
+    if (liveDirectHandle) {
+      this.noteStableTerminalHandle(
+        ptyId,
+        liveDirectHandle,
+        pty.incarnationId,
+        worktreeId,
+        incarnationChanged ? 'incarnation-replaced' : 'handle-replaced'
+      )
+    }
     const hostScope = this.getOrchestrationCompatibilityHostScope(pty)
     if (paneKey && binding?.incarnationId && hostScope) {
       this._orchestrationDb?.retainReplacedWorkerTerminalResources({

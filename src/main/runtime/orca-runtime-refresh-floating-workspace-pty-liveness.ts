@@ -1,11 +1,11 @@
 // @ts-nocheck -- mechanically split from OrcaRuntimeService; behavior is covered by AST equivalence and characterization tests.
-import { OrcaRuntimeWithRefreshPtyWorktreeRecordsWithControllerInventory } from './orca-runtime-refresh-pty-worktree-records-with-controller-inventory'
+import { OrcaRuntimeWithTerminalHandleDurability } from './orca-runtime-terminal-handle-durability'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
 import { isTerminalLeafId, makePaneKey } from '../../shared/stable-pane-id'
 import type { RuntimeLeafRecord, RuntimePtyWorktreeRecord } from './runtime-terminal-state-records'
 import { DISCONNECTED_PTY_RECORD_MAX } from './orca-runtime-postlude'
 
-export class OrcaRuntimeWithRefreshFloatingWorkspacePtyLiveness extends OrcaRuntimeWithRefreshPtyWorktreeRecordsWithControllerInventory {
+export class OrcaRuntimeWithRefreshFloatingWorkspacePtyLiveness extends OrcaRuntimeWithTerminalHandleDurability {
   protected refreshFloatingWorkspacePtyLiveness(): Set<string> | null {
     const controller = this.ptyController
     if (!controller?.hasPty) {
@@ -130,6 +130,10 @@ export class OrcaRuntimeWithRefreshFloatingWorkspacePtyLiveness extends OrcaRunt
     this.advancePtyLifecycleGeneration(ptyId)
     this.pairedRendererSessionOwnedPtyIds.delete(ptyId)
     this.ptysById.delete(ptyId)
+    // Why: the PTY is truly gone, so its durable handle must retire too — otherwise the next
+    // restart report would mourn it as failed-to-reattach. A later respawn under the same ptyId
+    // mints fresh, which is correct for a new process.
+    this.terminalHandleStore.forgetPty(ptyId)
     this.pendingPtyHandleReplacementFences.delete(ptyId)
     this.recentPtyOutputById.delete(ptyId)
     this.setupCompletionTokenByPtyId.delete(ptyId)
