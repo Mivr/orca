@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import type { readFileSync as NodeReadFileSync } from 'node:fs'
-import { homedir, tmpdir } from 'node:os'
+import os, { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import SyncDatabase from '../sqlite/sync-database'
@@ -25,6 +25,16 @@ vi.mock('node:fs', async (importOriginal) => {
 function mintJwt(sub: string): string {
   const payload = Buffer.from(JSON.stringify({ sub }), 'utf8').toString('base64url')
   return `eyJhbGciOiJub25lIn0.${payload}.sig`
+}
+
+function isolateLinuxCursorConfig(dir: string): void {
+  vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+  vi.stubEnv('XDG_CONFIG_HOME', dir)
+}
+
+function isolateDarwinCursorHome(dir: string): void {
+  vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+  vi.spyOn(os, 'homedir').mockReturnValue(dir)
 }
 
 describe('cursor-auth', () => {
@@ -108,12 +118,52 @@ describe('cursor-auth', () => {
     insert.run('cursorAuth/stripeSubscriptionStatus', 'active')
     db.close()
 
-    vi.stubEnv('XDG_CONFIG_HOME', dir)
+    isolateLinuxCursorConfig(dir)
     expect(readCursorAuthSession()).toEqual({
       status: 'ok',
       session: {
         accessToken: token,
         subject: 'auth0|desktop',
+        source: 'desktop',
+        email: 'dev@example.com',
+        membershipType: 'ultra',
+        subscriptionStatus: 'active'
+      }
+    })
+  })
+
+  it('reads the macOS Application Support desktop database without copying it', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orca-cursor-darwin-'))
+    dirs.push(dir)
+    const dbPath = join(
+      dir,
+      'Library',
+      'Application Support',
+      'Cursor',
+      'User',
+      'globalStorage',
+      'state.vscdb'
+    )
+    mkdirSync(join(dir, 'Library', 'Application Support', 'Cursor', 'User', 'globalStorage'), {
+      recursive: true
+    })
+    const db = new SyncDatabase(dbPath)
+    db.exec('CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)')
+    const token = mintJwt('auth0|darwin-desktop')
+    const insert = db.prepare('INSERT INTO ItemTable (key, value) VALUES (?, ?)')
+    insert.run('cursorAuth/accessToken', token)
+    insert.run('cursorAuth/cachedEmail', 'dev@example.com')
+    insert.run('cursorAuth/stripeMembershipType', 'ultra')
+    insert.run('cursorAuth/stripeSubscriptionStatus', 'active')
+    db.close()
+
+    isolateDarwinCursorHome(dir)
+    expect(getCursorDesktopStateDbPath()).toBe(dbPath)
+    expect(readCursorAuthSession()).toEqual({
+      status: 'ok',
+      session: {
+        accessToken: token,
+        subject: 'auth0|darwin-desktop',
         source: 'desktop',
         email: 'dev@example.com',
         membershipType: 'ultra',
@@ -128,7 +178,7 @@ describe('cursor-auth', () => {
     const token = mintJwt('auth0|cli')
     mkdirSync(join(dir, 'cursor'), { recursive: true })
     writeFileSync(join(dir, 'cursor', 'auth.json'), JSON.stringify({ accessToken: token }))
-    vi.stubEnv('XDG_CONFIG_HOME', dir)
+    isolateLinuxCursorConfig(dir)
     expect(readCursorAuthSession()).toEqual({
       status: 'ok',
       session: {
@@ -145,7 +195,7 @@ describe('cursor-auth', () => {
   it('returns missing when neither auth source exists', () => {
     const dir = mkdtempSync(join(tmpdir(), 'orca-cursor-missing-'))
     dirs.push(dir)
-    vi.stubEnv('XDG_CONFIG_HOME', dir)
+    isolateLinuxCursorConfig(dir)
     expect(readCursorAuthSession()).toEqual({ status: 'missing' })
   })
 
@@ -155,7 +205,7 @@ describe('cursor-auth', () => {
     const dbPath = join(dir, 'Cursor', 'User', 'globalStorage', 'state.vscdb')
     mkdirSync(join(dir, 'Cursor', 'User', 'globalStorage'), { recursive: true })
     writeFileSync(dbPath, 'not a sqlite database')
-    vi.stubEnv('XDG_CONFIG_HOME', dir)
+    isolateLinuxCursorConfig(dir)
 
     expect(readCursorAuthSession()).toEqual({
       status: 'error',
@@ -171,7 +221,7 @@ describe('cursor-auth', () => {
     const db = new SyncDatabase(dbPath)
     db.exec('CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)')
     db.exec('BEGIN EXCLUSIVE')
-    vi.stubEnv('XDG_CONFIG_HOME', dir)
+    isolateLinuxCursorConfig(dir)
 
     try {
       expect(readCursorAuthSession()).toEqual({
@@ -191,7 +241,7 @@ describe('cursor-auth', () => {
     const authPath = join(authDir, 'auth.json')
     mkdirSync(authDir, { recursive: true })
     writeFileSync(authPath, '{}')
-    vi.stubEnv('XDG_CONFIG_HOME', dir)
+    isolateLinuxCursorConfig(dir)
     fsMocks.readFileSync.mockImplementationOnce(() => {
       throw Object.assign(new Error('permission denied'), { code: 'EACCES' })
     })
@@ -208,7 +258,7 @@ describe('cursor-auth', () => {
     const authDir = join(dir, 'cursor')
     mkdirSync(authDir, { recursive: true })
     writeFileSync(join(authDir, 'auth.json'), '{')
-    vi.stubEnv('XDG_CONFIG_HOME', dir)
+    isolateLinuxCursorConfig(dir)
 
     expect(readCursorAuthSession()).toEqual({
       status: 'error',

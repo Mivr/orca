@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import os from 'node:os'
 import { join } from 'node:path'
 import SyncDatabase from '../sqlite/sync-database'
 
@@ -28,14 +28,14 @@ export type CursorAuthReadResult =
 function cursorConfigRoot(source: CursorAuthSource): string {
   if (process.platform === 'darwin') {
     return source === 'desktop'
-      ? join(homedir(), 'Library', 'Application Support', 'Cursor')
-      : join(homedir(), '.cursor')
+      ? join(os.homedir(), 'Library', 'Application Support', 'Cursor')
+      : join(os.homedir(), '.cursor')
   }
   if (process.platform === 'win32') {
-    const root = process.env.APPDATA?.trim() || join(homedir(), 'AppData', 'Roaming')
+    const root = process.env.APPDATA?.trim() || join(os.homedir(), 'AppData', 'Roaming')
     return join(root, 'Cursor')
   }
-  const root = process.env.XDG_CONFIG_HOME?.trim() || join(homedir(), '.config')
+  const root = process.env.XDG_CONFIG_HOME?.trim() || join(os.homedir(), '.config')
   return join(root, source === 'desktop' ? 'Cursor' : 'cursor')
 }
 

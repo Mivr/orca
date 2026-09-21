@@ -117,7 +117,7 @@ export function CursorAccountsSection(): React.JSX.Element {
           size="xs"
           disabled={refreshing}
           onClick={() => void handleRefreshUsage()}
-          className="shrink-0 gap-1"
+          className="shrink-0"
         >
           {refreshing ? (
             <Loader2 className="size-3 animate-spin" />
@@ -144,8 +144,8 @@ export function CursorAccountsSection(): React.JSX.Element {
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs font-medium">{item.name}</span>
             <div className="flex items-center gap-2 text-xs">
-              <Badge variant="secondary" className="tabular-nums">
-                {Math.round(item.usedPercent)}%
+              <Badge variant="secondary">
+                <span className="tabular-nums">{Math.round(item.usedPercent)}%</span>
               </Badge>
               {item.resetsAt || item.resetDescription ? (
                 <span className="text-muted-foreground">
