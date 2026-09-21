@@ -5,26 +5,33 @@ import type { Page } from '@stablyai/playwright-test'
 import { test, expect } from './helpers/orca-app'
 import { getStoreState, waitForSessionReady } from './helpers/store'
 
-async function maskCursorEmail(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const current = window.__store!.getState().rateLimits
-    const cursor = current.cursor
-    if (!cursor?.usageMetadata?.accountEmail) {
-      return
-    }
-    window.__store!.setState({
-      rateLimits: {
-        ...current,
-        cursor: {
-          ...cursor,
-          usageMetadata: {
-            ...cursor.usageMetadata,
-            accountEmail: 'user@******.com'
+const MASKED_CURSOR_EMAIL = 'user@******.com'
+
+async function installPersistentCursorEmailMask(page: Page): Promise<void> {
+  await page.evaluate((maskedEmail) => {
+    const apply = (): void => {
+      const current = window.__store!.getState().rateLimits
+      const cursor = current.cursor
+      const email = cursor?.usageMetadata?.accountEmail
+      if (!email || email === maskedEmail) {
+        return
+      }
+      window.__store!.setState({
+        rateLimits: {
+          ...current,
+          cursor: {
+            ...cursor,
+            usageMetadata: {
+              ...cursor.usageMetadata,
+              accountEmail: maskedEmail
+            }
           }
         }
-      }
-    })
-  })
+      })
+    }
+    apply()
+    window.__store!.subscribe(apply)
+  }, MASKED_CURSOR_EMAIL)
 }
 
 const REAL_CURSOR_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'Cursor')
@@ -71,8 +78,12 @@ test.describe('macOS Cursor desktop login', () => {
         { timeout: 30_000 }
       )
       .toEqual(expect.objectContaining({ auth: true, status: 'ok' }))
+    const bucketCount = await orcaPage.evaluate(
+      () => window.__store!.getState().rateLimits.cursor?.buckets?.length ?? 0
+    )
+    expect(bucketCount).toBeGreaterThan(0)
 
-    await maskCursorEmail(orcaPage)
+    await installPersistentCursorEmailMask(orcaPage)
 
     const proofDir = PROOF_DIR ?? testInfo.outputDir
     mkdirSync(proofDir, { recursive: true })
@@ -107,7 +118,6 @@ test.describe('macOS Cursor desktop login', () => {
       animations: 'disabled'
     })
 
-    await maskCursorEmail(orcaPage)
     await orcaPage.getByRole('button', { name: 'Usage' }).click()
     const cursorRow = orcaPage.getByText(/Cursor/).first()
     await expect(cursorRow).toBeVisible()
@@ -116,7 +126,7 @@ test.describe('macOS Cursor desktop login', () => {
       animations: 'disabled'
     })
     await cursorRow.click()
-    await expect(orcaPage.getByText('user@******.com')).toBeVisible()
+    await expect(orcaPage.getByText(MASKED_CURSOR_EMAIL)).toBeVisible()
     await orcaPage.screenshot({
       path: path.join(proofDir, 'macos-cursor-menu-light.png'),
       animations: 'disabled'
@@ -135,7 +145,6 @@ test.describe('macOS Cursor desktop login', () => {
       path: path.join(proofDir, 'macos-statusbar-compact-dark.png'),
       animations: 'disabled'
     })
-    await maskCursorEmail(orcaPage)
     await orcaPage.getByRole('button', { name: 'Usage' }).click()
     await orcaPage
       .getByText(/Cursor/)
@@ -148,7 +157,6 @@ test.describe('macOS Cursor desktop login', () => {
     await orcaPage.keyboard.press('Escape')
     await orcaPage.keyboard.press('Escape')
 
-    await maskCursorEmail(orcaPage)
     await orcaPage.evaluate(() => {
       const state = window.__store!.getState()
       state.openSettingsTarget({ pane: 'accounts', repoId: null, sectionId: 'accounts-cursor' })

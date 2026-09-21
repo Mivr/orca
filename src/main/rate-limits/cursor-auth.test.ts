@@ -213,6 +213,30 @@ describe('cursor-auth', () => {
     })
   })
 
+  it('falls back to CLI auth.json when the desktop database is unreadable', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orca-cursor-desktop-error-cli-'))
+    dirs.push(dir)
+    const token = mintJwt('auth0|cli-after-desktop-error')
+    const dbPath = join(dir, 'Cursor', 'User', 'globalStorage', 'state.vscdb')
+    mkdirSync(join(dir, 'Cursor', 'User', 'globalStorage'), { recursive: true })
+    writeFileSync(dbPath, 'not a sqlite database')
+    mkdirSync(join(dir, 'cursor'), { recursive: true })
+    writeFileSync(join(dir, 'cursor', 'auth.json'), JSON.stringify({ accessToken: token }))
+    isolateLinuxCursorConfig(dir)
+
+    expect(readCursorAuthSession()).toEqual({
+      status: 'ok',
+      session: {
+        accessToken: token,
+        subject: 'auth0|cli-after-desktop-error',
+        source: 'cli',
+        email: null,
+        membershipType: null,
+        subscriptionStatus: null
+      }
+    })
+  })
+
   it('returns error when the desktop database is locked', () => {
     const dir = mkdtempSync(join(tmpdir(), 'orca-cursor-locked-'))
     dirs.push(dir)
