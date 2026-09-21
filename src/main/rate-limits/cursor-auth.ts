@@ -186,25 +186,7 @@ function sessionFromToken(
   return subject ? { accessToken: token, subject, source, ...profile } : null
 }
 
-export function readCursorAuthSession(): CursorAuthReadResult {
-  const desktopPath = getCursorDesktopStateDbPath()
-  const cliPath = getCursorCliAuthPath()
-  // Why: most hosts have no Cursor install; keep service construction and polls off SQLite entirely.
-  if (!existsSync(desktopPath) && !existsSync(cliPath)) {
-    return { status: 'missing' }
-  }
-  const desktopRead = readDesktopProfile(desktopPath)
-  if (desktopRead.status === 'error') {
-    return desktopRead
-  }
-  const profile = desktopRead.status === 'ok' ? desktopRead.profile : emptyProfile()
-  const desktop = profile.accessToken
-    ? sessionFromToken(profile.accessToken, 'desktop', profile)
-    : null
-  if (desktop) {
-    return { status: 'ok', session: desktop }
-  }
-
+function readCliSession(cliPath: string): CursorAuthReadResult {
   const cliRead = readCliAccessToken(cliPath)
   if (cliRead.status === 'error') {
     return cliRead
@@ -218,4 +200,28 @@ export function readCursorAuthSession(): CursorAuthReadResult {
         })
       : null
   return cli ? { status: 'ok', session: cli } : { status: 'missing' }
+}
+
+export function readCursorAuthSession(): CursorAuthReadResult {
+  const desktopPath = getCursorDesktopStateDbPath()
+  const cliPath = getCursorCliAuthPath()
+  // Why: most hosts have no Cursor install; keep service construction and polls off SQLite entirely.
+  if (!existsSync(desktopPath) && !existsSync(cliPath)) {
+    return { status: 'missing' }
+  }
+  const desktopRead = readDesktopProfile(desktopPath)
+  if (desktopRead.status === 'error') {
+    const cli = readCliSession(cliPath)
+    // Why: a locked or corrupt state.vscdb must not hide a usable Cursor Agent token.
+    return cli.status === 'ok' ? cli : desktopRead
+  }
+  const profile = desktopRead.status === 'ok' ? desktopRead.profile : emptyProfile()
+  const desktop = profile.accessToken
+    ? sessionFromToken(profile.accessToken, 'desktop', profile)
+    : null
+  if (desktop) {
+    return { status: 'ok', session: desktop }
+  }
+
+  return readCliSession(cliPath)
 }
