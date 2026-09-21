@@ -63,8 +63,12 @@ function isWeeklyBucket(bucketId: string, window: string, displayName: string): 
 }
 
 function toWindow(bucket: RateLimitBucket): RateLimitWindow {
-  const { name: _name, ...window } = bucket
-  return window
+  return {
+    usedPercent: bucket.usedPercent,
+    windowMinutes: bucket.windowMinutes ?? SESSION_WINDOW_MINUTES,
+    resetsAt: bucket.resetsAt,
+    resetDescription: bucket.resetDescription
+  }
 }
 
 function tightest(buckets: RateLimitBucket[]): RateLimitWindow | null {
