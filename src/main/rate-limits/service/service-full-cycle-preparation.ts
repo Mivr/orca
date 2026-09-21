@@ -1,5 +1,7 @@
 import { fetchClaudeRateLimits } from '../claude-fetcher'
 import { fetchCodexRateLimits } from '../codex-fetcher'
+import { fetchAntigravityRateLimits } from '../antigravity-usage-fetcher'
+import { hasAntigravityAuthFile } from '../antigravity-oauth-sources'
 import { fetchGeminiRateLimits } from '../gemini-usage-fetcher'
 import { fetchGrokRateLimits } from '../grok-fetcher'
 import { readGrokAuthSession } from '../grok-auth'
@@ -34,6 +36,7 @@ export type FetchAllCyclePrepared = {
   miniMaxGeneration: number
   claudeFetchGated: boolean
   results: [
+    PromiseSettledResult<ProviderRateLimits>,
     PromiseSettledResult<ProviderRateLimits>,
     PromiseSettledResult<ProviderRateLimits>,
     PromiseSettledResult<ProviderRateLimits>,
@@ -93,6 +96,7 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
     this.grokAuthConfigured = grokAuthReadResult.status === 'ok'
     const cursorAuthReadResult = readCursorAuthSession()
     this.cursorAuthConfigured = cursorAuthReadResult.status === 'ok'
+    this.antigravityAuthConfigured = hasAntigravityAuthFile()
 
     // Discard stale data on config change — it belongs to a different session/workspace.
     // Digest, not the key: this string only has to change when the account does.
@@ -157,7 +161,8 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
       opencodeGoResult,
       kimiResult,
       miniMaxResult,
-      cursorResult
+      cursorResult,
+      antigravityResult
     ] = await Promise.allSettled([
         claudeFetchGated
           ? Promise.resolve(previousState.claude as ProviderRateLimits)
@@ -199,7 +204,8 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
               endpointMode: miniMaxEndpoint,
               apiKey: miniMaxApiKey
             }),
-        fetchCursorRateLimits({ signal, authReadResult: cursorAuthReadResult })
+        fetchCursorRateLimits({ signal, authReadResult: cursorAuthReadResult }),
+        fetchAntigravityRateLimits()
       ])
 
     if (signal.aborted) {
@@ -228,7 +234,8 @@ export abstract class RateLimitServiceFullCyclePreparation extends RateLimitServ
         opencodeGoResult,
         kimiResult,
         miniMaxResult,
-        cursorResult
+        cursorResult,
+        antigravityResult
       ],
       grokResultPromise
     }

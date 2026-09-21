@@ -22,6 +22,7 @@ import {
 } from './service-types'
 import { readGrokAuthSession } from '../grok-auth'
 import { readCursorAuthSession } from '../cursor-auth'
+import { hasAntigravityAuthFile } from '../antigravity-oauth-sources'
 
 export abstract class RateLimitServiceState {
   protected state: InternalRateLimitState = {
@@ -38,6 +39,7 @@ export abstract class RateLimitServiceState {
   protected grokAuthConfigured = readGrokAuthSession().status === 'ok'
   protected openCodeGoApiKeyConfigured = false
   protected cursorAuthConfigured = readCursorAuthSession().status === 'ok'
+  protected antigravityAuthConfigured = hasAntigravityAuthFile()
   protected pollInterval: number = DEFAULT_POLL_MS
   protected timer: ReturnType<typeof setInterval> | null = null
   protected deferredStartupRefreshTimer: ReturnType<typeof setTimeout> | null = null

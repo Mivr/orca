@@ -22,6 +22,7 @@ describe('RateLimitState', () => {
       opencodeGoApiKeyConfigured: false,
       grokAuthConfigured: false,
       cursorAuthConfigured: false,
+      antigravityAuthConfigured: false,
       claudeTarget: { runtime: 'host', wslDistro: null },
       codexTarget: { runtime: 'host', wslDistro: null },
       inactiveClaudeAccounts: [],

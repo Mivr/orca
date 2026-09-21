@@ -159,6 +159,8 @@ export type RateLimitState = {
   grokAuthConfigured: boolean
   /** True when main finds a Cursor desktop or CLI access token. */
   cursorAuthConfigured: boolean
+  /** True when main finds an Antigravity CLI token file or macOS keychain session. */
+  antigravityAuthConfigured: boolean
   claudeTarget: RateLimitRuntimeTarget
   codexTarget: RateLimitRuntimeTarget
   inactiveClaudeAccounts: InactiveAccountUsage[]
