@@ -94,7 +94,7 @@ describe('ensureSandboxForWorktree', () => {
     const run = calls.find((call) => call.args[0] === 'run')
     expect(run).toBeDefined()
     const args = run?.args ?? []
-    expect(args).toContain('--memory=4g')
+    expect(args).toContain('--memory=8g')
     expect(args).toContain('--cpus=2.0')
     expect(args).toContain('1000:1000')
     expect(args).toContain('orca.sandbox.managed=1')

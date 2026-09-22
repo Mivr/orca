@@ -62,7 +62,15 @@ export function sandboxExtraHosts(env: NodeJS.ProcessEnv = process.env): string[
 }
 
 /** Per-sandbox limits: 40GB / 20 threads worst case at 10x on the 64GB host. */
-export const SANDBOX_MEMORY = '4g'
+export const SANDBOX_MEMORY_ENV = 'ORCA_SANDBOX_MEMORY'
+export const SANDBOX_DEFAULT_MEMORY = '8g'
+
+export function sandboxMemory(env: NodeJS.ProcessEnv = process.env): string {
+  const custom = env[SANDBOX_MEMORY_ENV]?.trim()
+  return custom || SANDBOX_DEFAULT_MEMORY
+}
+
+export const SANDBOX_MEMORY = sandboxMemory()
 export const SANDBOX_CPUS = '2.0'
 
 /** Marker env: orcad stamps the target container, the daemon rewrites the spawn. */

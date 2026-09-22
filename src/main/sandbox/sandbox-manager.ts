@@ -27,7 +27,6 @@ import {
   SANDBOX_HOME,
   SANDBOX_IMAGE,
   SANDBOX_MANAGED_LABEL,
-  SANDBOX_MEMORY,
   SANDBOX_SLOTS_FULL,
   SANDBOX_WORKTREE_ENV,
   SANDBOX_WORKTREE_LABEL,
@@ -35,7 +34,8 @@ import {
   sandboxContainerName,
   sandboxDriDevices,
   sandboxExtraHosts,
-  sandboxGpuGroups
+  sandboxGpuGroups,
+  sandboxMemory
 } from './sandbox-config'
 
 export { SANDBOX_SLOTS_FULL }
@@ -181,7 +181,7 @@ export async function ensureSandboxForWorktree(args: {
     name,
     '--user',
     '1000:1000',
-    `--memory=${SANDBOX_MEMORY}`,
+    `--memory=${sandboxMemory()}`,
     `--cpus=${SANDBOX_CPUS}`,
     // GPU passthrough: host AMD render node + video/render gids so Chromium
     // uses radeonsi instead of SwiftShader. Env-overridable, empty opts out.

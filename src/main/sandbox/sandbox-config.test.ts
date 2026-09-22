@@ -3,6 +3,7 @@ import {
   MAX_SANDBOX_SLOTS,
   SANDBOX_HOME,
   SANDBOX_IMAGE,
+  SANDBOX_MEMORY,
   SANDBOX_SLOTS_FULL,
   isSandboxRoutingEnabled,
   pickSandboxEnv,
@@ -13,7 +14,8 @@ import {
   sandboxDriDevices,
   sandboxExtraHosts,
   sandboxGpuGroups,
-  sandboxInnerShell
+  sandboxInnerShell,
+  sandboxMemory
 } from './sandbox-config'
 
 describe('sandbox-config', () => {
@@ -152,6 +154,12 @@ describe('sandbox-config', () => {
       'bar:5.6.7.8'
     ])
     expect(sandboxExtraHosts({ ORCA_SANDBOX_EXTRA_HOSTS: '' })).toEqual([])
+  })
+
+  it('defaults sandbox memory to 8g, overrides via env', () => {
+    expect(SANDBOX_MEMORY).toBe('8g')
+    expect(sandboxMemory({})).toBe('8g')
+    expect(sandboxMemory({ ORCA_SANDBOX_MEMORY: '16g' })).toBe('16g')
   })
 
   it('stamps container HOME for auth-mount destinations', () => {
