@@ -140,7 +140,15 @@ export const SANDBOX_ENV_ALLOWLIST = [
   'GEMINI_API_KEY',
   'GOOGLE_API_KEY',
   'CODEX_API_KEY',
-  'CLAUDE_CODE_API_KEY'
+  'CLAUDE_CODE_API_KEY',
+  'SB_FORGE_URL',
+  'SB_FORGE_DB_URL',
+  'SB_FORGE_LOG_URL',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'ALL_PROXY',
+  'NO_PROXY',
+  'no_proxy'
 ] as const
 
 export function pickSandboxEnv(env: Record<string, string>): Record<string, string> {

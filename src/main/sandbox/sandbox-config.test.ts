@@ -42,12 +42,32 @@ describe('sandbox-config', () => {
     const picked = pickSandboxEnv({
       TERM: 'xterm-256color',
       ANTHROPIC_API_KEY: 'secret',
+      SB_FORGE_URL: 'http://172.17.0.1:8082',
+      SB_FORGE_DB_URL: 'http://172.17.0.1:8082',
+      SB_FORGE_LOG_URL: 'http://172.17.0.1:8090',
+      HTTP_PROXY: 'http://127.0.0.1:7890',
+      HTTPS_PROXY: 'http://127.0.0.1:7890',
+      ALL_PROXY: 'socks5://127.0.0.1:7890',
+      NO_PROXY: 'localhost,127.0.0.1',
+      no_proxy: 'localhost,127.0.0.1',
+      SB_FORGE_TOKEN: 'token-must-not-pass',
       HOME: '/home/mihail',
       ORCA_USER_DATA: '/home/mihail/.orca-orcad-data',
       SSH_AUTH_SOCK: '/run/agent.sock',
       ORCA_SANDBOX_NAME: 'orca-sandbox-x'
     })
-    expect(picked).toEqual({ TERM: 'xterm-256color', ANTHROPIC_API_KEY: 'secret' })
+    expect(picked).toEqual({
+      TERM: 'xterm-256color',
+      ANTHROPIC_API_KEY: 'secret',
+      SB_FORGE_URL: 'http://172.17.0.1:8082',
+      SB_FORGE_DB_URL: 'http://172.17.0.1:8082',
+      SB_FORGE_LOG_URL: 'http://172.17.0.1:8090',
+      HTTP_PROXY: 'http://127.0.0.1:7890',
+      HTTPS_PROXY: 'http://127.0.0.1:7890',
+      ALL_PROXY: 'socks5://127.0.0.1:7890',
+      NO_PROXY: 'localhost,127.0.0.1',
+      no_proxy: 'localhost,127.0.0.1'
+    })
   })
 
   it('passes per-spawn hook coords into the sandbox, never stamps or secrets', () => {
