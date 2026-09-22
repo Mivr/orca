@@ -285,16 +285,18 @@ describe('resolveSandboxAuthMounts', () => {
     const spoolDir = join(endpointDir, 'spool')
     const codexRuntimeHome = join(dir, 'codexhome')
     const opencodeOverlaysDir = join(userData, 'opencode-config-overlays')
+    const opencodeSharedDir = join(userData, 'opencode-hooks', 'shared')
     mkdirSync(endpointDir, { recursive: true })
     writeFileSync(join(endpointDir, 'endpoint.env'), 'ORCA_AGENT_HOOK_PORT=1\n')
     mkdirSync(spoolDir, { recursive: true })
     mkdirSync(codexRuntimeHome, { recursive: true })
     mkdirSync(opencodeOverlaysDir, { recursive: true })
+    mkdirSync(opencodeSharedDir, { recursive: true })
     const mounts = await resolveSandboxAuthMounts(noInspect, {
       orcadHome: home,
       env: {
         ORCA_SANDBOX_AUTH_MOUNTS:
-          'hook-scripts-abs,hook-scripts-home,gemini-config,hook-endpoint,hook-spool,codex-runtime-home,opencode-overlays'
+          'hook-scripts-abs,hook-scripts-home,gemini-config,hook-endpoint,hook-spool,codex-runtime-home,opencode-overlays,opencode-shared'
       },
       hookDirs: {
         scriptsDir,
@@ -302,7 +304,8 @@ describe('resolveSandboxAuthMounts', () => {
         endpointDir,
         spoolDir,
         codexRuntimeHome,
-        opencodeOverlaysDir
+        opencodeOverlaysDir,
+        opencodeSharedDir
       }
     })
     expect(mounts).toEqual([
@@ -312,7 +315,8 @@ describe('resolveSandboxAuthMounts', () => {
       `${endpointDir}:${endpointDir}:ro`,
       `${spoolDir}:${spoolDir}:rw`,
       `${codexRuntimeHome}:${codexRuntimeHome}:rw`,
-      `${opencodeOverlaysDir}:${opencodeOverlaysDir}:rw`
+      `${opencodeOverlaysDir}:${opencodeOverlaysDir}:rw`,
+      `${opencodeSharedDir}:${opencodeSharedDir}:rw`
     ])
   })
 
@@ -334,7 +338,8 @@ describe('resolveSandboxAuthMounts', () => {
         endpointDir: join(dir, 'nope-endpoint'),
         spoolDir: join(dir, 'nope-spool'),
         codexRuntimeHome: join(dir, 'nope-codex'),
-        opencodeOverlaysDir: join(dir, 'nope-overlays')
+        opencodeOverlaysDir: join(dir, 'nope-overlays'),
+        opencodeSharedDir: join(dir, 'nope-shared')
       }
     })
     expect(missing).toEqual([])

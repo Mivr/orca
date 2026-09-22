@@ -39,6 +39,8 @@ export type SandboxHookMountDirs = {
   codexRuntimeHome: string
   /** Opencode overlay root (ensured to exist). */
   opencodeOverlaysDir: string
+  /** Opencode shared config dir (ensured to exist). */
+  opencodeSharedDir: string
 }
 
 /** Every hook-mount key, so an invariant test can pin the full set. */
@@ -51,7 +53,8 @@ export const SANDBOX_HOOK_MOUNT_KEYS: readonly SandboxAuthMountKey[] =
       key === 'hook-endpoint' ||
       key === 'hook-spool' ||
       key === 'codex-runtime-home' ||
-      key === 'opencode-overlays'
+      key === 'opencode-overlays' ||
+      key === 'opencode-shared'
   )
 
 /**
@@ -71,7 +74,9 @@ export function resolveSandboxHookMountDirs(
   const endpointDir = join(userDataPath, 'agent-hooks')
   const spoolDir = join(endpointDir, 'spool')
   const opencodeOverlaysDir = join(userDataPath, 'opencode-config-overlays')
-  for (const dir of [spoolDir, opencodeOverlaysDir]) {
+  const opencodeSharedDir = join(userDataPath, 'opencode-hooks', 'shared')
+  const opencodeSharedPluginsDir = join(opencodeSharedDir, 'plugins')
+  for (const dir of [spoolDir, opencodeOverlaysDir, opencodeSharedDir, opencodeSharedPluginsDir]) {
     try {
       mkdirSync(dir, { recursive: true, mode: 0o700 })
     } catch {
@@ -84,7 +89,8 @@ export function resolveSandboxHookMountDirs(
     endpointDir,
     spoolDir,
     codexRuntimeHome,
-    opencodeOverlaysDir
+    opencodeOverlaysDir,
+    opencodeSharedDir
   }
 }
 
@@ -162,6 +168,15 @@ export function sandboxHookMountSpecs(hookDirs: SandboxHookMountDirs): SandboxHo
       key: 'opencode-overlays',
       hostPath: hookDirs.opencodeOverlaysDir,
       containerPath: hookDirs.opencodeOverlaysDir,
+      kind: 'dir',
+      mode: 'rw'
+    },
+    // Opencode shared config (written to by opencode for deps / gitignore):
+    // :rw same-path so OPENCODE_CONFIG_DIR resolves verbatim in the sandbox.
+    {
+      key: 'opencode-shared',
+      hostPath: hookDirs.opencodeSharedDir,
+      containerPath: hookDirs.opencodeSharedDir,
       kind: 'dir',
       mode: 'rw'
     }

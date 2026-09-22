@@ -224,7 +224,8 @@ export const SANDBOX_AUTH_MOUNT_KEYS = [
   'hook-endpoint',
   'hook-spool',
   'codex-runtime-home',
-  'opencode-overlays'
+  'opencode-overlays',
+  'opencode-shared'
 ] as const
 export type SandboxAuthMountKey = (typeof SANDBOX_AUTH_MOUNT_KEYS)[number]
 
