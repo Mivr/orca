@@ -75,8 +75,18 @@ describe('antigravity out-of-band event name', () => {
     const lines = buildPosixHookSpoolLines('antigravity', 'ORCA_ANTIGRAVITY_EVENT').join('\n')
     expect(lines).toContain('"hookEventName":"%s"')
     expect(lines).toContain('${ORCA_ANTIGRAVITY_EVENT:-}')
-    expect(lines).toContain('in PreToolUse|PostToolUse|PostToolUseFailure) return 0')
+    expect(lines).toContain(
+      'in PreToolUse|PostToolUse|PostToolUseFailure|preToolUse|postToolUse|postToolUseFailure'
+    )
+    expect(lines).toContain(
+      'beforeShellExecution|afterShellExecution|beforeMCPExecution|afterMCPExecution|afterFileEdit'
+    )
     // payload-based filtering stays the default for every other provider
-    expect(buildPosixHookSpoolLines('codex').join('\n')).toContain('case "$payload" in')
+    const codexLines = buildPosixHookSpoolLines('codex').join('\n')
+    expect(codexLines).toContain('case "$payload" in')
+    expect(codexLines).toContain('*\'"PreToolUse"\'*')
+    expect(codexLines).toContain('*\'"preToolUse"\'*')
+    expect(codexLines).toContain('*\'"beforeShellExecution"\'*')
+    expect(codexLines).toContain('*\'"afterFileEdit"\'*')
   })
 })

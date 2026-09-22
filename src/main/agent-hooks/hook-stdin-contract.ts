@@ -118,6 +118,30 @@ export function buildPosixHookPayloadCapture(
   ]
 }
 
+const POSIX_HOOK_SPOOL_TOOL_EVENTS = [
+  'PreToolUse',
+  'PostToolUse',
+  'PostToolUseFailure',
+  'preToolUse',
+  'postToolUse',
+  'postToolUseFailure',
+  'beforeShellExecution',
+  'afterShellExecution',
+  'beforeMCPExecution',
+  'afterMCPExecution',
+  'afterFileEdit',
+  'BeforeShellExecution',
+  'AfterShellExecution',
+  'BeforeMCPExecution',
+  'AfterMCPExecution',
+  'AfterFileEdit'
+] as const
+
+const POSIX_HOOK_SPOOL_EVENT_VAR_PATTERN = POSIX_HOOK_SPOOL_TOOL_EVENTS.join('|')
+const POSIX_HOOK_SPOOL_PAYLOAD_PATTERN = POSIX_HOOK_SPOOL_TOOL_EVENTS.map(
+  (eventName) => `*'"${eventName}"'*`
+).join('|')
+
 /** Shell-side durable fallback shared by every POSIX managed hook.
  *  `eventNameVar` is for providers that send the event name out-of-band rather than in the
  *  payload JSON; without it both the progress filter and replay would miss the event name. */
@@ -137,8 +161,8 @@ export function buildPosixHookSpoolLines(source: string, eventNameVar?: string):
   return [
     'spool_hook_event() {',
     eventNameVar
-      ? `  case "\${${eventNameVar}:-}" in PreToolUse|PostToolUse|PostToolUseFailure) return 0 ;; esac`
-      : '  case "$payload" in *\'"PreToolUse"\'*|*\'"PostToolUse"\'*|*\'"PostToolUseFailure"\'*) return 0 ;; esac',
+      ? `  case "\${${eventNameVar}:-}" in ${POSIX_HOOK_SPOOL_EVENT_VAR_PATTERN}) return 0 ;; esac`
+      : `  case "$payload" in ${POSIX_HOOK_SPOOL_PAYLOAD_PATTERN}) return 0 ;; esac`,
     '  [ -n "${ORCA_AGENT_HOOK_ENDPOINT:-}" ] || return 0',
     // Why: an endpoint can linger in a parent shell after leaving Orca; without a pane key
     // the record is un-attributable and would accumulate as pane-unknown.jsonl.

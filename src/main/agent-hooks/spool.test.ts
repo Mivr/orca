@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   appendFileSync,
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -247,6 +248,52 @@ describe('agent hook spool', () => {
     expect(readFileSync(join(endpointDir, 'spool', spoolFiles[0]!), 'utf8')).toContain(
       'SubagentStop'
     )
+  })
+
+  it('drops tool-level events in both camelCase and PascalCase from spooling', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'orca-spool-tools-'))
+    const endpointDir = join(dir, 'agent-hooks')
+    mkdirSync(endpointDir, { recursive: true })
+    const endpoint = join(endpointDir, 'endpoint.env')
+    writeFileSync(
+      endpoint,
+      'ORCA_AGENT_HOOK_PORT=9\nORCA_AGENT_HOOK_TOKEN=stale\nORCA_AGENT_HOOK_ENV=production\nORCA_AGENT_HOOK_VERSION=1\n'
+    )
+    const script = join(dir, 'codex-hook.sh')
+    writeFileSync(script, codexInternals.getManagedScript('posix'))
+    chmodSync(script, 0o755)
+
+    const toolPayloads = [
+      '{"hook_event_name":"PreToolUse"}',
+      '{"hook_event_name":"preToolUse"}',
+      '{"hook_event_name":"PostToolUse"}',
+      '{"hook_event_name":"postToolUse"}',
+      '{"hook_event_name":"PostToolUseFailure"}',
+      '{"hook_event_name":"postToolUseFailure"}',
+      '{"hook_event_name":"beforeShellExecution"}',
+      '{"hook_event_name":"afterShellExecution"}',
+      '{"hook_event_name":"beforeMCPExecution"}',
+      '{"hook_event_name":"afterMCPExecution"}',
+      '{"hook_event_name":"afterFileEdit"}'
+    ]
+
+    for (const payload of toolPayloads) {
+      execFileSync('/bin/sh', [script], {
+        input: `${payload}\n`,
+        env: {
+          ...process.env,
+          ORCA_AGENT_HOOK_ENDPOINT: endpoint,
+          ORCA_PANE_KEY: 'tab-tools:0',
+          ORCA_TAB_ID: 'tab-tools',
+          ORCA_AGENT_LAUNCH_TOKEN: 'generation-token'
+        },
+        timeout: 5000
+      })
+    }
+
+    const spoolDir = join(endpointDir, 'spool')
+    const spoolFiles = existsSync(spoolDir) ? readdirSync(spoolDir) : []
+    expect(spoolFiles).toHaveLength(0)
   })
 
   it('does not mark a non-terminal downtime replay as runtime-observed', async () => {
