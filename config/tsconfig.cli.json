@@ -140,6 +140,7 @@
     // The parity test keeps this import-free list aligned with COMMAND_SPECS.
     "../src/main/startup/cli-command-names.ts",
     "../src/main/runtime/runtime-metadata.ts",
+    "../src/main/sandbox/sandbox-config.ts",
     "../src/main/sqlite/sync-database.ts",
     "../src/main/win32-utils.ts"
   ],
