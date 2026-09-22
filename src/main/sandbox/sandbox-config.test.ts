@@ -11,6 +11,7 @@ import {
   sandboxBindMap,
   sandboxContainerName,
   sandboxDriDevices,
+  sandboxExtraHosts,
   sandboxGpuGroups,
   sandboxInnerShell
 } from './sandbox-config'
@@ -122,6 +123,15 @@ describe('sandbox-config', () => {
       'render'
     ])
     expect(sandboxGpuGroups({ ORCA_SANDBOX_GPU_GROUPS: '' })).toEqual([])
+  })
+
+  it('defaults extra hosts to host.docker.internal:host-gateway, overrides via env', () => {
+    expect(sandboxExtraHosts({})).toEqual(['host.docker.internal:host-gateway'])
+    expect(sandboxExtraHosts({ ORCA_SANDBOX_EXTRA_HOSTS: 'foo:1.2.3.4,bar:5.6.7.8' })).toEqual([
+      'foo:1.2.3.4',
+      'bar:5.6.7.8'
+    ])
+    expect(sandboxExtraHosts({ ORCA_SANDBOX_EXTRA_HOSTS: '' })).toEqual([])
   })
 
   it('stamps container HOME for auth-mount destinations', () => {

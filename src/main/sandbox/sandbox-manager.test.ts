@@ -127,6 +127,30 @@ describe('ensureSandboxForWorktree', () => {
     const groupAdds = args.flatMap((arg, i) => (arg === '--group-add' ? [args[i + 1]] : []))
     expect(groupAdds).toContain('44')
     expect(groupAdds).toContain('991')
+    expect(args).toContain('--add-host')
+    const addHosts = args.flatMap((arg, i) => (arg === '--add-host' ? [args[i + 1]] : []))
+    expect(addHosts).toContain('host.docker.internal:host-gateway')
+  })
+
+  it('honors extra hosts env overrides and empty opt-out', async () => {
+    const { mkdirSync } = await import('node:fs')
+    vi.stubEnv('ORCA_SANDBOX_EXTRA_HOSTS', 'custom.internal:10.0.0.1')
+    const overridePath = join(dir, 'wt-hosts-override')
+    mkdirSync(overridePath, { recursive: true })
+    await ensureSandboxForWorktree({
+      worktreeId: 'repo::/wt-hosts-override',
+      worktreePath: overridePath
+    })
+    const overrideArgs = calls.find((call) => call.args[0] === 'run')?.args ?? []
+    expect(overrideArgs).toContain('custom.internal:10.0.0.1')
+
+    vi.stubEnv('ORCA_SANDBOX_EXTRA_HOSTS', '')
+    calls = []
+    const optOutPath = join(dir, 'wt-hosts-optout')
+    mkdirSync(optOutPath, { recursive: true })
+    await ensureSandboxForWorktree({ worktreeId: 'repo::/wt-hosts-optout', worktreePath: optOutPath })
+    const optOutArgs = calls.find((call) => call.args[0] === 'run')?.args ?? []
+    expect(optOutArgs).not.toContain('--add-host')
   })
 
   it('honors GPU env overrides and empty opt-out', async () => {

@@ -53,6 +53,14 @@ export function sandboxGpuGroups(env: NodeJS.ProcessEnv = process.env): string[]
   return parseCsvEnv(env[SANDBOX_GPU_GROUPS_ENV]) ?? [...SANDBOX_DEFAULT_GPU_GROUPS]
 }
 
+/** Extra hosts passed to `docker run --add-host` for host routing. */
+export const SANDBOX_EXTRA_HOSTS_ENV = 'ORCA_SANDBOX_EXTRA_HOSTS'
+const SANDBOX_DEFAULT_EXTRA_HOSTS = ['host.docker.internal:host-gateway']
+
+export function sandboxExtraHosts(env: NodeJS.ProcessEnv = process.env): string[] {
+  return parseCsvEnv(env[SANDBOX_EXTRA_HOSTS_ENV]) ?? [...SANDBOX_DEFAULT_EXTRA_HOSTS]
+}
+
 /** Per-sandbox limits: 40GB / 20 threads worst case at 10x on the 64GB host. */
 export const SANDBOX_MEMORY = '4g'
 export const SANDBOX_CPUS = '2.0'

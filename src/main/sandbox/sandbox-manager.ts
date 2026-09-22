@@ -34,6 +34,7 @@ import {
   isSandboxRoutingEnabled,
   sandboxContainerName,
   sandboxDriDevices,
+  sandboxExtraHosts,
   sandboxGpuGroups
 } from './sandbox-config'
 
@@ -186,6 +187,7 @@ export async function ensureSandboxForWorktree(args: {
     // uses radeonsi instead of SwiftShader. Env-overridable, empty opts out.
     ...sandboxDriDevices().flatMap((device) => ['--device', device]),
     ...sandboxGpuGroups().flatMap((group) => ['--group-add', group]),
+    ...sandboxExtraHosts().flatMap((host) => ['--add-host', host]),
     // Why /var/tmp: the image default HOME (/root) is unreadable as uid 1000,
     // no host home may leak in (§2 deny), and agent CLIs refuse a temporary
     // HOME (/tmp) for helper binaries. Container-private writable layer;
