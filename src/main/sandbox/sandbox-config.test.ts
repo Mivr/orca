@@ -15,13 +15,22 @@ import {
   sandboxExtraHosts,
   sandboxGpuGroups,
   sandboxInnerShell,
-  sandboxMemory
+  sandboxMemory,
+  isCodexRealHomeHooksSweepSuppressed,
+  ORCA_CODEX_REAL_HOME_HOOKS_ENV
 } from './sandbox-config'
 
 describe('sandbox-config', () => {
   it('caps concurrent sandboxes at ten', () => {
     expect(MAX_SANDBOX_SLOTS).toBe(10)
     expect(SANDBOX_SLOTS_FULL).toBe('sandbox_slots_full')
+  })
+
+  it('suppresses real-home Codex hook sweep by default, restores sweep on 0', () => {
+    expect(ORCA_CODEX_REAL_HOME_HOOKS_ENV).toBe('ORCA_CODEX_REAL_HOME_HOOKS')
+    expect(isCodexRealHomeHooksSweepSuppressed({})).toBe(true)
+    expect(isCodexRealHomeHooksSweepSuppressed({ ORCA_CODEX_REAL_HOME_HOOKS: '1' })).toBe(true)
+    expect(isCodexRealHomeHooksSweepSuppressed({ ORCA_CODEX_REAL_HOME_HOOKS: '0' })).toBe(false)
   })
 
   it('mints stable docker-safe container names', () => {

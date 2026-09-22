@@ -83,6 +83,15 @@ export const SANDBOX_HOME = '/var/tmp'
 /** Master switch — desktop and unpaired hosts never route unless this is set. */
 export const SANDBOX_ROUTING_ENV = 'ORCA_SANDBOX_AGENTS'
 
+// the real home is owned by the host lane on this deployment; orcad must not sweep it
+export const ORCA_CODEX_REAL_HOME_HOOKS_ENV = 'ORCA_CODEX_REAL_HOME_HOOKS'
+
+export function isCodexRealHomeHooksSweepSuppressed(
+  env: NodeJS.ProcessEnv = process.env
+): boolean {
+  return env[ORCA_CODEX_REAL_HOME_HOOKS_ENV] !== '0'
+}
+
 /**
  * Explicit container-path → host-source bind overrides, `;`-separated
  * `/container/path=/host/source` pairs. Needed when orcad itself runs

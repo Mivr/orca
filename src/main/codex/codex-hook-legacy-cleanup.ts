@@ -26,6 +26,7 @@ import {
 import { readCodexTrustGrantLedgerHomeForReconciliation } from './codex-managed-trust-reconciliation'
 import { runExclusivelyForCodexTrustConfig } from './codex-trust-config-mutation-queue'
 import { mutateRealHomeHooksPreservingUserTrust } from './codex-user-hook-trust-rebase'
+import { isCodexRealHomeHooksSweepSuppressed } from '../sandbox/sandbox-config'
 
 const LEGACY_ORCA_PROFILE_NAME = 'orca-agent-status'
 const LEGACY_ORCA_PROFILE_BLOCK_START = '# BEGIN ORCA AGENT STATUS HOOKS'
@@ -40,6 +41,17 @@ let systemCodexHomeHookSweepSuppressed: () => boolean = () => false
 
 export function setSystemCodexHomeHookSweepSuppressed(gate: () => boolean): void {
   systemCodexHomeHookSweepSuppressed = gate
+}
+
+// the real home is owned by the host lane on this deployment; orcad must not sweep it
+export function armOrcadCodexRealHomeHooksGate(
+  env: NodeJS.ProcessEnv = process.env
+): void {
+  if (isCodexRealHomeHooksSweepSuppressed(env)) {
+    setSystemCodexHomeHookSweepSuppressed(() => true)
+  } else {
+    setSystemCodexHomeHookSweepSuppressed(() => false)
+  }
 }
 
 function getLegacyCodexProfileTomlPath(): string {

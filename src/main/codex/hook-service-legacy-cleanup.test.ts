@@ -1,9 +1,14 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type * as Os from 'node:os'
 import { join } from 'node:path'
 import { wrapPosixHookCommand } from '../agent-hooks/installer-utils'
 import { upsertHookTrustEntriesInContent } from './config-toml-trust'
+import {
+  armOrcadCodexRealHomeHooksGate,
+  cleanupLegacySystemManagedHooks,
+  setSystemCodexHomeHookSweepSuppressed
+} from './codex-hook-legacy-cleanup'
 import {
   hookTrustHeader,
   isCodexManagedCommand,
@@ -340,5 +345,102 @@ describe('CodexHookService', () => {
     expect(systemToml).not.toContain(':session_start:0:0')
     expect(existsSync(legacyProfilePath)).toBe(false)
     expect(service.getStatus().state).toBe('installed')
+  })
+
+  describe('ORCA_CODEX_REAL_HOME_HOOKS knob under orcad headless startup', () => {
+    const originalEnv = process.env.ORCA_CODEX_REAL_HOME_HOOKS
+
+    afterEach(() => {
+      if (originalEnv === undefined) {
+        delete process.env.ORCA_CODEX_REAL_HOME_HOOKS
+      } else {
+        process.env.ORCA_CODEX_REAL_HOME_HOOKS = originalEnv
+      }
+      setSystemCodexHomeHookSweepSuppressed(() => false)
+    })
+
+    it('with the knob default, cleanupLegacySystemManagedHooks() leaves a real-home hooks.json containing the managed command untouched', async () => {
+      delete process.env.ORCA_CODEX_REAL_HOME_HOOKS
+      armOrcadCodexRealHomeHooksGate()
+
+      const systemCodexHome = join(homes.tmpHome, '.codex')
+      const systemHooksPath = join(systemCodexHome, 'hooks.json')
+      const systemTomlPath = join(systemCodexHome, 'config.toml')
+      const legacyCommand = legacyManagedHookCommand()
+      mkdirSync(systemCodexHome, { recursive: true })
+      writeFileSync(
+        systemHooksPath,
+        `${JSON.stringify({
+          hooks: {
+            Stop: [{ hooks: [{ type: 'command', command: legacyCommand }] }]
+          }
+        })}\n`,
+        'utf-8'
+      )
+      writeFileSync(
+        systemTomlPath,
+        upsertHookTrustEntriesInContent('model = "system-model"\n', [
+          {
+            sourcePath: systemHooksPath,
+            eventLabel: 'stop',
+            groupIndex: 0,
+            handlerIndex: 0,
+            command: legacyCommand
+          }
+        ]),
+        'utf-8'
+      )
+
+      await cleanupLegacySystemManagedHooks()
+
+      const systemHooks = JSON.parse(readFileSync(systemHooksPath, 'utf-8')) as {
+        hooks: Record<string, { hooks?: { command?: string }[] }[]>
+      }
+      expect(systemHooks.hooks.Stop).toEqual([{ hooks: [{ type: 'command', command: legacyCommand }] }])
+      const systemToml = readFileSync(systemTomlPath, 'utf-8')
+      expect(systemToml).toContain(':stop:0:0')
+    })
+
+    it('with ORCA_CODEX_REAL_HOME_HOOKS=0 the existing sweep behaviour holds', async () => {
+      process.env.ORCA_CODEX_REAL_HOME_HOOKS = '0'
+      armOrcadCodexRealHomeHooksGate()
+
+      const systemCodexHome = join(homes.tmpHome, '.codex')
+      const systemHooksPath = join(systemCodexHome, 'hooks.json')
+      const systemTomlPath = join(systemCodexHome, 'config.toml')
+      const legacyCommand = legacyManagedHookCommand()
+      mkdirSync(systemCodexHome, { recursive: true })
+      writeFileSync(
+        systemHooksPath,
+        `${JSON.stringify({
+          hooks: {
+            Stop: [{ hooks: [{ type: 'command', command: legacyCommand }] }]
+          }
+        })}\n`,
+        'utf-8'
+      )
+      writeFileSync(
+        systemTomlPath,
+        upsertHookTrustEntriesInContent('model = "system-model"\n', [
+          {
+            sourcePath: systemHooksPath,
+            eventLabel: 'stop',
+            groupIndex: 0,
+            handlerIndex: 0,
+            command: legacyCommand
+          }
+        ]),
+        'utf-8'
+      )
+
+      await cleanupLegacySystemManagedHooks()
+
+      const systemHooks = JSON.parse(readFileSync(systemHooksPath, 'utf-8')) as {
+        hooks: Record<string, { hooks?: { command?: string }[] }[]>
+      }
+      expect(systemHooks.hooks.Stop).toBeUndefined()
+      const systemToml = readFileSync(systemTomlPath, 'utf-8')
+      expect(systemToml).not.toContain(':stop:0:0')
+    })
   })
 })

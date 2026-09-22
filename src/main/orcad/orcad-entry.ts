@@ -24,6 +24,7 @@ import {
 } from './orcad-bind-address'
 import { acquireOrcadInstanceLock, OrcadInstanceLockError } from './orcad-instance-lock'
 import { startOrcadWithLifecycle } from './orcad-lifecycle'
+import { armOrcadCodexRealHomeHooksGate } from '../codex/hook-service'
 
 export { installOrcadHostAdapters }
 
@@ -48,6 +49,8 @@ export type OrcadHandle = {
  */
 export async function startOrcad(options: OrcadOptions = {}): Promise<OrcadHandle> {
   installOrcadHostAdapters()
+  // the real home is owned by the host lane on this deployment; orcad must not sweep it
+  armOrcadCodexRealHomeHooksGate()
   const userDataPath = resolveUserDataPath()
   // Why before anything else touches the root: the profile index, the store and the daemon
   // runtime dir all live under it, and two orcads sharing them corrupt state silently. This
@@ -233,6 +236,8 @@ async function startOrcadRuntime(
   // Codex-home and Claude-auth preparation are left unset: both are desktop account
   // flows. A launch that needs one fails with its own message rather than silently
   // spawning an unauthenticated agent.
+  // Note: the real home is owned by the host lane on this deployment; orcad must not sweep it
+  // (armOrcadCodexRealHomeHooksGate armed at startup suppresses the legacy hook sweep).
   await registerHeadlessPtyRuntime(runtime, undefined, () => store.getSettings(), undefined, store)
 
   // Why: same post-registration reconciliation `--serve` performs. Skipping it leaves
