@@ -69,7 +69,15 @@ const VERSIONED_ONNXRUNTIME_DYLIB_RE = /^libonnxruntime\.\d[\d.]*\.dylib$/
 
 const NODE_BUILTINS = new Set([
   ...builtinModules,
-  ...builtinModules.map((moduleName) => `node:${moduleName}`)
+  ...builtinModules.map((moduleName) => `node:${moduleName}`),
+  // Why: node:sqlite ships as experimental in Node 22 (Electron 43's runtime):
+  // require() works, but 'sqlite' is absent from builtinModules until the
+  // module goes stable, so the derived set above misses it and the packaged
+  // main guard demands a node_modules copy that can never exist. Runtime
+  // availability stays defended at the call site (sync-database.ts throws a
+  // clear error when getBuiltinModule is unavailable).
+  'sqlite',
+  'node:sqlite'
 ])
 
 function packageNameFromSpecifier(specifier) {
