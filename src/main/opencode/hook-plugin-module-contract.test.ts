@@ -36,6 +36,7 @@ describe('OpenCode status plugin module contract', () => {
   // (an inherited ORCA_AGENT_HOOK_ENDPOINT would otherwise redirect the post to a live app).
   const ENV_KEYS = [
     'ORCA_PANE_KEY',
+    'ORCA_OPENCODE_AGENT',
     'ORCA_AGENT_HOOK_ENDPOINT',
     'ORCA_AGENT_HOOK_PORT',
     'ORCA_AGENT_HOOK_TOKEN'
@@ -57,6 +58,10 @@ describe('OpenCode status plugin module contract', () => {
     // `hooks.event` undefined and fail the contract for the wrong reason.
     delete process.env.ORCA_OPENCODE_AGENT
     delete process.env.ORCA_AGENT_HOOK_ENDPOINT
+    // Why: the factory no-ops when ORCA_OPENCODE_AGENT names the other pane
+    // variant. An inherited value (e.g. running vitest inside an Orca opencode
+    // pane) would make the opencode2-source cases resolve to {}.
+    delete process.env.ORCA_OPENCODE_AGENT
     process.env.ORCA_AGENT_HOOK_PORT = '59999'
     process.env.ORCA_AGENT_HOOK_TOKEN = 'test-token'
   })
@@ -86,22 +91,35 @@ describe('OpenCode status plugin module contract', () => {
     return (await import(pathToFileURL(pluginPath).href)) as PluginModule
   }
 
-  it('exposes a default export carrying a string id and a callable server()', async () => {
+  it('exposes a default export carrying a string id with callable server() and setup()', async () => {
     const module = await loadPluginModule()
 
     expect(module.default).toBeTypeOf('object')
     expect(typeof module.default?.id).toBe('string')
     expect(module.default?.id).toBe('orca-opencode-status')
+    // v1 loader: "must default export an object with server()".
     expect(module.default?.server).toBeTypeOf('function')
+    // v2 loader: "must export a default definition with an id and an effect or
+    // setup function" — a server()-only export is refused (opencode v2.0.16).
+    expect(module.default?.setup).toBeTypeOf('function')
   })
 
   it('rejects the shape OpenCode refuses: a default export without server()', async () => {
     const module = await loadPluginModule()
 
-    // Why: pins the specific reason the loader fails a module — `setup` alone is not
-    // accepted, so a default export must never regress to it.
+    // Why: the v1 loader fails a module without server(), so a default export
+    // must never regress to setup-only either — v1 still needs server().
     expect(module.default).not.toBeUndefined()
     expect(Object.hasOwn(module.default ?? {}, 'server')).toBe(true)
+  })
+
+  it('rejects the shape OpenCode v2 refuses: a default export without setup()', async () => {
+    const module = await loadPluginModule()
+
+    // Why: the v2 loader fails a module without effect/setup, so a default
+    // export must never regress to server-only — v2 still needs setup().
+    expect(module.default).not.toBeUndefined()
+    expect(Object.hasOwn(module.default ?? {}, 'setup')).toBe(true)
   })
 
   it('keeps the named factory export so the factory-based loader still resolves', async () => {
