@@ -18,6 +18,10 @@ import { isHookRequestTruncatedError } from '../../../shared/agent-hook-listener
 import { clearAllListenerCaches } from '../../../shared/agent-hook-listener/listener-state'
 import { trackEmptyPaneKeyHook } from './server-transport-rules'
 import { AgentHookServerStatusHookLifecycle } from './server-status-hook-lifecycle'
+import {
+  drainAgentHookSpoolAsync,
+  type SpoolRecord
+} from '../../../shared/agent-hook-listener/transport/agent-hook-spool'
 import { OPENCODE_STARTUP_PROMPT_CLAIM_PATH } from '../../../shared/agent-launch/startup/opencode-startup-prompt'
 import { CLAUDE_AGENT_VIEW_PATH } from '../../../shared/claude-agent-view'
 import { respondAfterAgentToolPluginHooks } from '../tool-events/agent-tool-plugin-hooks'
@@ -237,6 +241,26 @@ export abstract class AgentHookServerLifecycle extends AgentHookServerStatusHook
     if (isCurrent() && this.statusHooksEnabled) {
       this.startOpenCodeBinderLoop()
     }
+  }
+
+  /**
+   * Cutover7: sandbox-spool poll entry. Bridge-networked sandbox hooks cannot
+   * POST to loopback, so they spool into the mounted dir; this replays them
+   * into the same store as the startup drain. Idempotent — the drain consumes
+   * what it replays — so a fixed-interval poll is safe.
+   */
+  async drainSandboxHookSpool(): Promise<number> {
+    if (!this.endpointDir || !this.statusHooksEnabled) {
+      return 0
+    }
+    return drainAgentHookSpoolAsync({
+      endpointDir: this.endpointDir,
+      getPersistedLaunchTokenHash: (paneKey) =>
+        this.hydratedLaunchTokenHashByPaneKey.get(this.resolvePaneKeyAlias(paneKey)),
+      ingest: async (record: SpoolRecord) => {
+        await this.ingestSpoolRecord(record)
+      }
+    })
   }
 
   private rollbackTransportStart(): void {

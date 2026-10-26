@@ -1,4 +1,4 @@
-import { OrcaRuntimeWithRefreshPtyWorktreeRecordsWithControllerInventory } from './pty-controller-inventory-refresh'
+import { OrcaRuntimeWithTerminalHandleDurability } from '../../orca-runtime-terminal-handle-durability'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import { indexFloatingSnapshotPtyBindings } from './floating-snapshot-pty-bindings'
 import type {
@@ -9,7 +9,7 @@ import type {
 import { questionAnswerWaitPrefix } from '../../orchestration/mailbox/questions/question-answer-delivery'
 const DISCONNECTED_PTY_RECORD_MAX = 128
 
-export abstract class OrcaRuntimeWithRefreshFloatingWorkspacePtyLiveness extends OrcaRuntimeWithRefreshPtyWorktreeRecordsWithControllerInventory {
+export abstract class OrcaRuntimeWithRefreshFloatingWorkspacePtyLiveness extends OrcaRuntimeWithTerminalHandleDurability {
   protected refreshFloatingWorkspacePtyLiveness(): Set<string> | null {
     const controller = this.ptyController
     if (!controller?.hasPty) {
@@ -116,6 +116,10 @@ export abstract class OrcaRuntimeWithRefreshFloatingWorkspacePtyLiveness extends
     this.advancePtyLifecycleGeneration(ptyId)
     this.pairedRendererSessionOwnedPtyIds.delete(ptyId)
     this.terminalIdentity.removePty(ptyId)
+    // Why: the PTY is truly gone, so its durable handle must retire too — otherwise the next
+    // restart report would mourn it as failed-to-reattach. A later respawn under the same ptyId
+    // mints fresh, which is correct for a new process.
+    this.terminalHandleStore.forgetPty(ptyId)
     this.pendingPtyHandleReplacementFences.delete(ptyId)
     this.recentPtyOutputById.delete(ptyId)
     this.launchComposerReadyByPtyId.delete(ptyId)

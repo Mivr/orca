@@ -131,6 +131,7 @@ export abstract class OrcaRuntimeWithWriteOrchestrationPointerPty extends OrcaRu
         : {}),
       lastOutputAt: leaf.lastOutputAt,
       preview: leaf.preview,
+      ...(pty?.rootProcessId != null ? { processId: pty.rootProcessId } : {}),
       ...(leaf.lastExitCause ? { exitCause: leaf.lastExitCause } : {}),
       ...this.terminalExecutionHostField(leaf.ptyId, leaf.worktreeId),
       ...this.resolvePaneAgentIdentityField(

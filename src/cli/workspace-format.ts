@@ -148,10 +148,11 @@ export function formatWorktreePs(
     return `No worktrees found.\n${scope}`
   }
   const body = result.worktrees
-    .map(
-      (worktree) =>
-        `${worktree.repo} ${worktree.branch}  host=${worktree.hostId ?? 'unverifiable'}  ${formatWorktreePsTerminalFields(worktree)}  unread:${worktree.unread ? 'yes' : 'no'}${formatWorktreePsProgramStatus(worktree.agents)}\n${worktree.path}${formatWorktreePsLocation(worktree)}${worktree.preview ? `\npreview: ${worktree.preview}` : ''}`
-    )
+    .map((worktree) => {
+      const sandbox = `sandbox:${worktree.sandbox ?? 'absent'}`
+      const sandboxReason = worktree.sandboxReason ? ` sandboxReason:${worktree.sandboxReason}` : ''
+      return `${worktree.repo} ${worktree.branch}  host=${worktree.hostId ?? 'unverifiable'}  ${formatWorktreePsTerminalFields(worktree)}  unread:${worktree.unread ? 'yes' : 'no'}  ${sandbox}${sandboxReason}${formatWorktreePsProgramStatus(worktree.agents)}\n${worktree.path}${formatWorktreePsLocation(worktree)}${worktree.preview ? `\npreview: ${worktree.preview}` : ''}`
+    })
     .join('\n\n')
   const bodyWithScope = `${body}\n\n${scope}`
   return result.truncated

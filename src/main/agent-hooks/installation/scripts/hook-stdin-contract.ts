@@ -96,7 +96,36 @@ export function buildPosixHookPayloadCapture(
   ]
 }
 
-/** Providers with out-of-band event names need eventNameVar for spool filtering and replay. */
+const POSIX_HOOK_SPOOL_TOOL_EVENTS = [
+  'PreToolUse',
+  'PostToolUse',
+  'PostToolUseFailure',
+  'preToolUse',
+  'postToolUse',
+  'postToolUseFailure',
+  'beforeShellExecution',
+  'afterShellExecution',
+  'beforeMCPExecution',
+  'afterMCPExecution',
+  'afterFileEdit',
+  'BeforeShellExecution',
+  'AfterShellExecution',
+  'BeforeMCPExecution',
+  'AfterMCPExecution',
+  'AfterFileEdit'
+] as const
+
+const POSIX_HOOK_SPOOL_EVENT_VAR_PATTERN = [...POSIX_HOOK_SPOOL_TOOL_EVENTS, 'PostToolBatch'].join('|')
+// PostToolBatch (upstream) is matched only as the hook_event_name value, compact or spaced.
+const POSIX_HOOK_SPOOL_PAYLOAD_PATTERN = [
+  ...POSIX_HOOK_SPOOL_TOOL_EVENTS.map((eventName) => `*'"${eventName}"'*`),
+  `*'"hook_event_name":"PostToolBatch"'*`,
+  `*'"hook_event_name": "PostToolBatch"'*`
+].join('|')
+
+/** Shell-side durable fallback shared by every POSIX managed hook.
+ *  `eventNameVar` is for providers that send the event name out-of-band rather than in the
+ *  payload JSON; without it both the progress filter and replay would miss the event name. */
 export function buildPosixHookSpoolLines(source: string, eventNameVar?: string): string[] {
   // Pass substitutions as printf arguments; single-quoted formats would emit them literally.
   const eventFormat = eventNameVar ? '"hookEventName":"%s",' : ''
@@ -112,8 +141,8 @@ export function buildPosixHookSpoolLines(source: string, eventNameVar?: string):
   return [
     'spool_hook_event() {',
     eventNameVar
-      ? `  case "\${${eventNameVar}:-}" in PreToolUse|PostToolUse|PostToolUseFailure|PostToolBatch) return 0 ;; esac`
-      : '  case "$payload" in *\'"PreToolUse"\'*|*\'"PostToolUse"\'*|*\'"PostToolUseFailure"\'*|*\'"hook_event_name":"PostToolBatch"\'*|*\'"hook_event_name": "PostToolBatch"\'*) return 0 ;; esac',
+      ? `  case "\${${eventNameVar}:-}" in ${POSIX_HOOK_SPOOL_EVENT_VAR_PATTERN}) return 0 ;; esac`
+      : `  case "$payload" in ${POSIX_HOOK_SPOOL_PAYLOAD_PATTERN}) return 0 ;; esac`,
     '  [ -n "${ORCA_AGENT_HOOK_ENDPOINT:-}" ] || return 0',
     // Stale endpoint variables outside Orca must not accumulate unattributed spool records.
     '  [ -n "${ORCA_PANE_KEY:-}" ] || return 0',

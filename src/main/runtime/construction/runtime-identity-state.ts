@@ -31,6 +31,10 @@ import { ClientSessionTabSelectionStore } from '../client/navigation/client-sess
 import { WorktreeTerminalMutationLock } from '../workspaces/lifecycle/worktree-terminal-mutation-lock'
 import { RemoteRuntimeTerminalCreateIdempotency } from '../terminal/identity/remote-runtime-terminal-create-idempotency'
 import type { PtyIncarnationId } from '../../../shared/terminal/pty/lifecycle/pty-incarnation'
+import {
+  createTerminalHandleStore,
+  type TerminalHandleRemapReason
+} from '../terminal-handle-persistence'
 
 import type { KeyedTrailingEdgeCoalescer } from '../client/events/keyed-trailing-edge-coalescer'
 import { createMobileSessionTabsNotifyCoalescer } from '../session-lifecycle/publication/mobile-session-tabs-notify-coalescer'
@@ -287,7 +291,29 @@ export abstract class OrcaRuntimeWithRuntimeId extends RuntimeConstructionServic
 
   protected abstract readonly handleByPtyIncarnation: TerminalIdentitySource['incarnations']
 
-  // Fence predecessor aliases until the announced replacement's spawn commit binds its pane.
+  // Why durable: preAllocateHandleForPty mints ORCA_TERMINAL_HANDLE per ptyId and the map died
+  // with the process, so every orcad restart reminted handles and stranded paired clients on the
+  // old one. The store replays the same handle for the same ptyId after a restart (see
+  // RESTART-RESILIENCE.md). In-memory until setTerminalHandlePersistenceDir enables the file.
+  protected readonly terminalHandleStore = createTerminalHandleStore()
+
+  // Durable `term_*` identity per ptyId (RESTART-RESILIENCE.md); here so every mixin can reach it.
+  protected resolveStableTerminalHandle(ptyId: string): string | null {
+    return this.terminalHandleStore.getStableHandle(ptyId)
+  }
+
+  protected noteStableTerminalHandle(
+    ptyId: string,
+    handle: string,
+    incarnationId: string | null = null,
+    worktreeId: string | null = null,
+    reason: TerminalHandleRemapReason = 'handle-replaced'
+  ): void {
+    this.terminalHandleStore.noteMapping(ptyId, handle, incarnationId, worktreeId, reason)
+  }
+
+  // A provider announces a replacement before the spawn commit can bind its
+  // pane. Keep the predecessor aliases fenced during that hand-off window.
   protected pendingPtyHandleReplacementFences = new Map<
     string,
     {

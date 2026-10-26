@@ -68,6 +68,7 @@ export abstract class OrcaRuntimeWithRecordPtyWorktree extends RuntimeWorkspaceR
         | 'isWsl'
         | 'wslDistro'
         | 'incarnationId'
+        | 'rootProcessId'
         | 'agentSessionOwners'
         | 'worktreeInferredFromCwd'
       >
@@ -95,6 +96,7 @@ export abstract class OrcaRuntimeWithRecordPtyWorktree extends RuntimeWorkspaceR
       pty = {
         ptyId,
         incarnationId: state.incarnationId ?? null,
+        rootProcessId: state.rootProcessId ?? null,
         worktreeId,
         ...(state.worktreeInferredFromCwd ? { worktreeInferredFromCwd: true } : {}),
         connectionId,
@@ -207,6 +209,9 @@ export abstract class OrcaRuntimeWithRecordPtyWorktree extends RuntimeWorkspaceR
     }
     if (state.isWsl !== undefined) {
       this.terminalIdentity.setPtyIsWsl(pty, state.isWsl)
+    }
+    if (state.rootProcessId !== undefined) {
+      pty.rootProcessId = state.rootProcessId
     }
     if (state.wslDistro !== undefined) {
       this.terminalIdentity.setPtyWslDistro(pty, state.wslDistro)

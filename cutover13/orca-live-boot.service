@@ -1,0 +1,9 @@
+[Unit]
+Description=Start orca-live on the current orcad image at boot when it is not running (cutover13)
+
+[Service]
+Type=oneshot
+ExecStart=/home/mihail/orca-docker/orca-live-boot.sh
+
+[Install]
+WantedBy=default.target

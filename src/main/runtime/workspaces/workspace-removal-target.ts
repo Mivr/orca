@@ -27,6 +27,7 @@ import {
 } from '../../../shared/execution-host'
 import { invalidateAuthorizedRootsCacheForRepo } from '../../ipc/worktrees/removal/registered-worktree-roots-scoped-invalidation'
 import { dropOrcaCreatedAgentTrustForRemovedWorktree } from './removal/worktree-removal-agent-trust-cleanup'
+import { removeSandboxForWorktree } from '../../sandbox/sandbox-manager'
 import {
   resumeInterruptedWorktreeRemovals,
   retryFailedWorktreeRemoval,
@@ -172,6 +173,11 @@ export abstract class OrcaRuntimeWithResolveWorktreeRemovalTarget extends Runtim
     removeWorktreeMetaRow(store, worktreeId, hostId)
     // Retire only this host's panes even when a same-id owner survives.
     this.dropAgentStatusForRemovedWorktreeFn?.(worktreeId, hostId ?? persistedHostId)
+    // Why fire-and-forget and outside the owner gate below: the sandbox is tied
+    // to the worktree id, and a removed worktree must stop+remove its container
+    // even when metadata ownership stays with another host. No-ops unless
+    // sandbox routing is enabled; failures never fail the removal.
+    void removeSandboxForWorktree(worktreeId).catch(() => {})
     if (!preservesSameIdOwner) {
       // Why: path-derived ids are reused; a stale pretrust entry would pre-trust the next occupant.
       const pretrustDrop = options.dropAgentTrust

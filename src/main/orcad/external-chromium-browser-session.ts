@@ -9,6 +9,14 @@ import {
   isAgentBrowserStaleRefError,
   parseAgentBrowserJsonOutput
 } from '../browser/agent-browser/protocol/agent-browser-batch-command'
+import {
+  WEBGL_RENDERER_PROBE_JS,
+  browserGlFallbackWarning,
+  classifyWebglRenderer,
+  extractRendererString,
+  hasAgentBrowserGpuFlags,
+  stripAgentBrowserGpuFlags
+} from '../browser/agent-browser-gpu-flags'
 import { BROWSER_UNAVAILABLE_ERROR_CODE } from '../../shared/runtime-types'
 import { Screenshot } from '../../shared/rpc-contract/browser-observation-params'
 import {
@@ -53,6 +61,10 @@ const AgentBrowserEnvelope = z.object({
 
 export type AgentBrowserTab = z.infer<typeof AgentBrowserTab>
 export type AgentBrowserStep = z.infer<typeof AgentBrowserStep>
+
+function errorDetail(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
 
 function classifyAgentBrowserError(message: string): string {
   if (isAgentBrowserStaleRefError(message)) {
@@ -105,6 +117,9 @@ export class ExternalChromiumBrowserSession {
   private readonly identity: string
   private readonly sessionName: string
   private profilePathResolution: Promise<string> | null = null
+  private activeBrowserArgs: readonly string[]
+  /** Set when start() falls back to software; kept for diagnostics. */
+  glFallbackWarning: string | null = null
 
   constructor(
     private readonly agentBrowserPath: string,
@@ -116,6 +131,7 @@ export class ExternalChromiumBrowserSession {
       .digest('hex')
       .slice(0, 16)
     this.sessionName = `orca-orcad-${this.identity}`
+    this.activeBrowserArgs = [...(launch.browserArgs ?? [])]
   }
 
   private profilePath(): Promise<string> {
@@ -144,6 +160,9 @@ export class ExternalChromiumBrowserSession {
     // Reclaim the stable name only when no active tab answers.
     await this.stop()
     signal?.throwIfAborted()
+    // Why: a reused session is never probed — it may be the user's live
+    // browser, so closing it for a GPU relaunch would be destructive.
+    const gpuAttempted = hasAgentBrowserGpuFlags(this.activeBrowserArgs)
     try {
       await this.run(['open', 'about:blank'], { signal })
     } catch (error) {
@@ -157,7 +176,10 @@ export class ExternalChromiumBrowserSession {
             'The browser needs write access there; confinement such as a snap sandbox can block it.'
         )
       }
-      throw error
+      if (!gpuAttempted || signal?.aborted) {
+        throw error
+      }
+      return this.startWithoutGpu(`GPU launch failed: ${errorDetail(error)}`, signal)
     }
     const opened = await this.readActiveTabId(signal)
     signal?.throwIfAborted()
@@ -167,7 +189,40 @@ export class ExternalChromiumBrowserSession {
         'The browser launched without an automation target.'
       )
     }
+    if (!gpuAttempted) {
+      return opened
+    }
+    const renderer = await this.probeWebglRenderer(signal).catch(() => null)
+    signal?.throwIfAborted()
+    if (classifyWebglRenderer(renderer) === 'hardware') {
+      return opened
+    }
+    return this.startWithoutGpu(
+      `WebGL renderer ${JSON.stringify(extractRendererString(renderer) ?? renderer)} is software`,
+      signal
+    )
+  }
+
+  private async startWithoutGpu(reason: string, signal?: AbortSignal): Promise<string> {
+    this.activeBrowserArgs = stripAgentBrowserGpuFlags(this.activeBrowserArgs)
+    await this.stop()
+    signal?.throwIfAborted()
+    await this.run(['open', 'about:blank'], { signal })
+    const opened = await this.readActiveTabId(signal)
+    signal?.throwIfAborted()
+    if (!opened) {
+      throw new BrowserError(
+        BROWSER_UNAVAILABLE_ERROR_CODE,
+        'The browser launched without an automation target.'
+      )
+    }
+    this.glFallbackWarning = browserGlFallbackWarning(reason)
+    console.warn(this.glFallbackWarning)
     return opened
+  }
+
+  private async probeWebglRenderer(signal?: AbortSignal): Promise<unknown> {
+    return this.run(['eval', WEBGL_RENDERER_PROBE_JS], { signal })
   }
 
   private async readActiveTabId(signal?: AbortSignal): Promise<string | null> {
@@ -268,8 +323,8 @@ export class ExternalChromiumBrowserSession {
     const profilePath = await this.profilePath()
     signal?.throwIfAborted()
     const args = ['--session', this.sessionName, '--profile', profilePath]
-    if (this.launch.browserArgs?.length) {
-      args.push('--args', this.launch.browserArgs.join('\n'))
+    if (this.activeBrowserArgs.length) {
+      args.push('--args', this.activeBrowserArgs.join('\n'))
     }
     args.push(...command)
     const env = externalChromiumAgentBrowserEnvironment({
@@ -277,7 +332,7 @@ export class ExternalChromiumBrowserSession {
       executablePath: this.launch.executablePath,
       profilePath,
       sessionName: this.sessionName,
-      browserArgs: this.launch.browserArgs
+      browserArgs: this.activeBrowserArgs
     })
     const result = await runProcess({
       program: this.agentBrowserPath,

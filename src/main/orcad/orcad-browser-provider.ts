@@ -10,6 +10,7 @@ import {
 import { ExternalChromiumBrowserProcess } from './external-chromium-browser-process'
 import type { ExternalChromiumLaunch } from './external-chromium-browser-session'
 import { resolveOrcadAgentBrowserBinary } from './orcad-agent-browser-binary'
+import { resolveAgentBrowserGpuArgs } from '../browser/agent-browser-gpu-flags'
 import { ElectronServeBrowserProcess } from './electron-serve-browser-process'
 import { openOrcadBrowserInstallPark } from './orcad-browser-install-park'
 import { errorMessage } from '../../shared/error-message'
@@ -246,7 +247,13 @@ export async function resolveOrcadBrowserProvider(
     setRuntimeBrowserUnavailableCause(null)
     return await startProvider(
       agentBrowserPath,
-      { executablePath: chromiumExecutable, provider: 'chromium' },
+      // Why hardware by default: the session probes the WebGL renderer and
+      // relaunches without these on software (BROWSER-GL-FALLBACK warning).
+      {
+        executablePath: chromiumExecutable,
+        provider: 'chromium',
+        browserArgs: resolveAgentBrowserGpuArgs(environment)
+      },
       options.userDataPath,
       options.signal
     )

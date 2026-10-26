@@ -60,6 +60,7 @@ import { WorkerAutoReleaseActivity } from '../../orchestration/terminal-authorit
 import { nativeChatIdleStopMs } from '../../../../shared/native-chat/native-chat-idle-stop'
 import { prWatchWorkspaceSources } from '../../agent-session/pr-watch-workspace-sources'
 import { startPRWatchRuntime } from '../../agent-session/pr-watch-runtime'
+import { describeSandboxesForWorktrees } from '../../../sandbox/sandbox-manager'
 const DEFAULT_WORKTREE_PS_LIMIT = 200
 
 export abstract class OrcaRuntimeWithGetWorktreePs extends RuntimeChatWorkerEvents {
@@ -138,6 +139,20 @@ export abstract class OrcaRuntimeWithGetWorktreePs extends RuntimeChatWorkerEven
       conversationName: this.orchestrationSenderNames.agentRowNamer(),
       agentList: this.readAgentListPublication()
     })
+    // Why here and not in the summaries builder: sandbox state is a live docker
+    // read (10s-cached, skipped entirely unless sandbox routing is enabled),
+    // and the builder stays a pure store projection. iOS renders this list.
+    const sandboxByWorktree = await describeSandboxesForWorktrees([...summaries.keys()])
+    for (const [worktreeId, state] of sandboxByWorktree) {
+      const summary = summaries.get(worktreeId)
+      if (!summary) {
+        continue
+      }
+      summary.sandbox = state.sandbox
+      if (state.sandboxReason) {
+        summary.sandboxReason = state.sandboxReason
+      }
+    }
 
     const sorted = [...summaries.values()].sort(compareWorktreePs)
     // Apply per-host pagination so hosts sorting last cannot disappear behind a global cap (#18104).

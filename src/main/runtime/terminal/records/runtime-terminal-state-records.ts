@@ -67,6 +67,9 @@ export type RuntimeLeafRecord = Readonly<RuntimeSyncedLeaf> &
 export type RuntimePtyWorktreeRecord = RuntimeTerminalTailState & {
   readonly ptyId: string
   readonly incarnationId: PtyIncarnationId | null
+  /** Host-side root pid of this PTY incarnation, when the provider proved one. Survives no
+   *  restart by itself, but lets snapshot/verify name the exact process a row points at. */
+  rootProcessId?: number | null
   readonly worktreeId: string
   /** Set only when no binding named the workspace; worktree-scoped stops never act on a cwd guess (#36716). */
   readonly worktreeInferredFromCwd?: true

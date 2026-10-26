@@ -148,6 +148,10 @@ export type RuntimeWorktreePsSummary = {
   detachedHead?: true
   /** Other-client classification for this host’s own phone, which shares its filter setting. */
   desktopOtherClient?: true
+  /** Phase-1 docker sandbox state. Absent on hosts that predate the field. */
+  sandbox?: 'running' | 'absent'
+  /** Set when sandbox admission last rejected this worktree (cap reached). */
+  sandboxReason?: 'sandbox_slots_full'
 }
 
 export type RuntimeGitLocalBranches = {

@@ -152,8 +152,20 @@ export abstract class OrcaRuntimeWithBindPtyIncarnationHandle extends OrcaRuntim
     ) {
       return retained.handle
     }
+    // Why the incarnation gate: the durable handle names the incarnation it was recorded against.
+    // Replaying it for a PROVEN-different incarnation would resurrect a fenced predecessor alias,
+    // so mint fresh instead (the note below logs the old→new remap). Null/unknown on either side
+    // cannot prove replacement, so replay — that is the restart-reattach case.
+    const stableEntry = this.terminalHandleStore.getStableEntry(pty.ptyId)
+    const stableUsable =
+      stableEntry !== null &&
+      (stableEntry.incarnationId === null ||
+        pty.incarnationId === null ||
+        stableEntry.incarnationId === pty.incarnationId)
     const existingHandle =
-      this.handleByPtyId.get(pty.ptyId) ?? this.findHandleForPtyRecord(pty.ptyId, context)
+      this.handleByPtyId.get(pty.ptyId) ??
+      (stableUsable ? stableEntry.handle : null) ??
+      this.findHandleForPtyRecord(pty.ptyId, context)
     if (existingHandle) {
       const existingRecord = this.handles.get(existingHandle)
       if (
@@ -170,6 +182,16 @@ export abstract class OrcaRuntimeWithBindPtyIncarnationHandle extends OrcaRuntim
     if (!existingHandle) {
       this.terminalIdentity.addSynthetic(handle)
     }
+    // Why: a replayed durable handle is not synthetic, but it is also not yet bound to a leaf in
+    // this process. Recording it keeps the store authoritative for the next restart — and when a
+    // proven-different incarnation forced a mint, this logs the old→new remap.
+    this.noteStableTerminalHandle(
+      pty.ptyId,
+      handle,
+      pty.incarnationId,
+      pty.worktreeId,
+      existingHandle ? 'handle-replaced' : stableEntry ? 'incarnation-replaced' : 'preallocated'
+    )
     const syntheticId = `pty:${pty.ptyId}`
     this.terminalIdentity.setHandle(handle, {
       handle,

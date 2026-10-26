@@ -181,6 +181,7 @@ export abstract class OrcaRuntimeWithRefreshPtyWorktreeRecordsWithControllerInve
         const pty = this.recordPtyWorktree(session.id, worktreeId, {
           connected: true,
           ...(session.incarnationId ? { incarnationId: session.incarnationId } : {}),
+          ...(session.rootProcessId !== undefined ? { rootProcessId: session.rootProcessId } : {}),
           agentSessionOwners: session.incarnationId ? (session.agentSessionOwners ?? []) : [],
           spawnPaneKey: session.paneKey ?? null,
           ...(worktreeInferredFromCwd ? { worktreeInferredFromCwd: true } : {}),

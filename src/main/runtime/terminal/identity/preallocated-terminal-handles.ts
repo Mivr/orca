@@ -35,8 +35,30 @@ export abstract class RuntimePreallocatedTerminalHandles extends RuntimeMobileSe
     if (existing) {
       return existing
     }
+    // Why durable first: after an orcad restart the in-memory map is empty but the daemon-side
+    // PTY (and its exported ORCA_TERMINAL_HANDLE) survived. Re-minting strands paired clients on
+    // the old handle; replaying the persisted one keeps it working (RESTART-RESILIENCE.md).
+    // Why the fence guard: a pending replacement proves THIS boot already retired the stored
+    // handle's process. Replaying it would resurrect a fenced predecessor alias, so mint fresh.
+    const stable = this.resolveStableTerminalHandle(ptyId)
+    const fence = this.pendingPtyHandleReplacementFences.get(ptyId)
+    const fenced =
+      fence !== undefined &&
+      stable !== null &&
+      fence.incarnationId !== this.terminalHandleStore.getStableEntry(ptyId)?.incarnationId
+    if (stable && !fenced) {
+      this.setPtyHandle(ptyId, stable)
+      return stable
+    }
     const handle = this.createPreAllocatedTerminalHandle()
     this.setPtyHandle(ptyId, handle)
+    this.noteStableTerminalHandle(
+      ptyId,
+      handle,
+      this.ptysById.get(ptyId)?.incarnationId ?? null,
+      null,
+      'preallocated'
+    )
     return handle
   }
 
@@ -83,6 +105,8 @@ export abstract class RuntimePreallocatedTerminalHandles extends RuntimeMobileSe
       this.invalidatePtyIncarnationHandle(ptyId)
     }
     this.setPtyHandle(ptyId, handle)
+    const incarnation = this.ptysById.get(ptyId)?.incarnationId ?? null
+    this.noteStableTerminalHandle(ptyId, handle, incarnation, null, 'controller-adopted')
     for (const leaf of this.getLeavesForPty(ptyId)) {
       this.adoptPreAllocatedHandle(leaf)
     }
@@ -117,6 +141,14 @@ export abstract class RuntimePreallocatedTerminalHandles extends RuntimeMobileSe
     )
     if (changedIncarnation) {
       const priorHandle = this.handleByPtyId.get(ptyId)
+      // Why the stable-handle exception: after an orcad/daemon restart the reattached PTY reports
+      // a new incarnation but exports its ORIGINAL handle. The in-memory predecessor alias is gone
+      // with the old process, so reusing the exported handle here is identity continuity, not alias
+      // resurrection — and it is what keeps paired clients attached (RESTART-RESILIENCE.md).
+      if (priorHandle === undefined && this.resolveStableTerminalHandle(ptyId) === trimmed) {
+        this.registerPreAllocatedHandleForPty(ptyId, trimmed)
+        return
+      }
       this.invalidateAllHandlesForPty(ptyId)
       forgetPtySurface(this.terminalIdentity, pty!)
       // Reusing an exported handle would make stale client metadata name the replacement process.

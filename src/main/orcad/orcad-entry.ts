@@ -17,6 +17,7 @@ import { bindOrcadStopTerminalAdmission } from './orcad-stop-terminal-admission'
 import type { OrcadHandle, OrcadOptions } from './orcad-start-contract'
 import { beginOrcadIdleExit } from './orcad-managed-idle-exit-host'
 import { orcadAutomationsKeepHostBusy, startOrcadAutomations } from './orcad-automations'
+import { logTerminalReattachReport, startSandboxHookSpoolPoll } from './orcad-sandbox-startup'
 import {
   changedAiVaultSearchSettings,
   type AiVaultSearchSettings
@@ -159,11 +160,19 @@ async function startOrcadRuntime(
     (enabled) => agentHookServer.setStatusHooksEnabled(enabled),
     registerCleanup
   )
+  // Sandbox hooks cannot POST to loopback from bridge networking; their spool files are polled.
+  const stopSandboxSpoolPoll = await startSandboxHookSpoolPoll(agentHookServer)
+  registerCleanup(() => stopSandboxSpoolPoll())
 
   // Install the daemon provider before PTY handlers can route their first call.
   await daemonStartup
 
-  // Runtime constructor callbacks use this index only after it is installed.
+  // Why here: orcad start (never a daemon restart) reaps sandboxes whose worktree is gone.
+  const { reapSandboxOrphansOnStart } = await import('./orcad-sandbox-reaper')
+  await reapSandboxOrphansOnStart(() => Object.keys(profileStore.getAllWorktreeMeta() ?? {}))
+
+  // Why a holder and not a direct reference: the index is installed after the runtime is
+  // constructed, and the deps hook is only ever called later, from an RPC.
   let sessionSearch: { apply(settings: AiVaultSearchSettings): void; dispose(): void } | null = null
 
   const { orcadCodexAccountHomes } = await import('./orcad-codex-account-homes')
@@ -249,6 +258,10 @@ async function startOrcadRuntime(
     // Wait behind earlier writes and persist repair before reconciliation/RPC admission.
     await repairDuplicatePtyPanesOnStart(profileStore, runtime)
   }
+  // Why here: terminal handles are minted per ptyId into spawn env (ORCA_TERMINAL_HANDLE).
+  // Without a durable map, every orcad restart remints them and strands paired clients on the
+  // old handle. The store replays the same handle for the same ptyId (RESTART-RESILIENCE.md).
+  runtime.setTerminalHandlePersistenceDir(runtimeUserDataPath)
 
   // Status changes must republish session.tabs to paired clients.
   uninstallHookStatusRepublish = installHookStatusSessionTabsRepublish(
@@ -282,7 +295,10 @@ async function startOrcadRuntime(
   // Stop recovery retries before final profile flush.
   registerCleanup(() => runtime.stopLegacyWorkerTerminalRecovery())
 
-  // Recovery establishes terminal/dispatch identities before fencing observations.
+  // Why here: the daemon is up and the inventory is warm, so the reattach diff is complete.
+  await logTerminalReattachReport(runtime)
+
+  // Recovery binds terminal and dispatch identities; only now can startup observations be fenced.
   observedStatusCapture.attach(runtime)
   agentHookServer.setCliWriterExecutionMatcher(observedPaneIdentities, runtime)
   // First RPC clients must see a fully published graph.
