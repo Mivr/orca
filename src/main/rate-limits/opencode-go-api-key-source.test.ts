@@ -206,4 +206,51 @@ describe('resolveOpenCodeGoApiKey', () => {
       expect(process.env).toEqual(inherited)
     }
   )
+
+  it('falls back to an active OpenCode v2 console oauth access token over an inactive go key', async () => {
+    const dbPath = join(dataHome, 'opencode-console-oauth.db')
+    const database = new Database(dbPath)
+    database.exec(
+      'CREATE TABLE credential (id TEXT PRIMARY KEY, integration_id TEXT, label TEXT, ' +
+        'value TEXT, active INTEGER, time_created INTEGER)'
+    )
+    database
+      .prepare(
+        'INSERT INTO credential (id, integration_id, label, value, active, time_created) VALUES (?, ?, ?, ?, ?, ?)'
+      )
+      .run(
+        'cred_stale_go',
+        'opencode-go',
+        'API key',
+        JSON.stringify({ type: 'key', key: 'stale-go-placeholder-key' }),
+        null,
+        1
+      )
+    database
+      .prepare(
+        'INSERT INTO credential (id, integration_id, label, value, active, time_created) VALUES (?, ?, ?, ?, ?, ?)'
+      )
+      .run(
+        'cred_console_oauth',
+        'opencode',
+        'Default',
+        JSON.stringify({
+          type: 'oauth',
+          methodID: 'device',
+          refresh: 'refresh-placeholder',
+          access: 'oauth-console-placeholder-token',
+          expires: Date.now() + 3_600_000
+        }),
+        1,
+        2
+      )
+    database.close()
+    process.env.OPENCODE_DB = dbPath
+
+    await expect(resolveOpenCodeGoApiKey({ backend: 'v2' })).resolves.toEqual({
+      status: 'found',
+      key: 'oauth-console-placeholder-token',
+      tier: 'opencode-credential-database'
+    })
+  })
 })

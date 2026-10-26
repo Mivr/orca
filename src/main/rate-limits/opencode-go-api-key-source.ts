@@ -15,6 +15,7 @@ import {
 } from '../opencode/opencode-credential-backend'
 
 const OPENCODE_GO_INTEGRATION_ID = 'opencode-go'
+const OPENCODE_CONSOLE_INTEGRATION_ID = 'opencode'
 // models.dev shares this variable between OpenCode and Go.
 const OPENCODE_API_KEY_ENV = 'OPENCODE_API_KEY'
 const AUTH_FILE_NAME = 'auth.json'
@@ -118,31 +119,72 @@ function isMissingPathError(error: unknown): boolean {
   )
 }
 
+function oauthAccessFromCredentialRecord(value: unknown): string | null {
+  if (!isRecord(value) || value.type !== 'oauth') {
+    return null
+  }
+  if (
+    typeof value.expires === 'number' &&
+    Number.isFinite(value.expires) &&
+    value.expires <= Date.now()
+  ) {
+    return null
+  }
+  return trimmedKey(value.access)
+}
+
 function selectCredentialKey(database: Database.Database): string | null {
   if (!tableExists(database, 'credential')) {
     return null
   }
-  // Prefer active credentials, then newest entries (packages/core/src/credential.ts).
-  const rows: unknown[] = database
+  // Prefer active opencode-go keys, then OpenCode v2 Console OAuth tokens, then fallback keys.
+  const goRows: unknown[] = database
     .prepare(
-      'SELECT value FROM credential WHERE integration_id = ? ' +
+      'SELECT active, value FROM credential WHERE integration_id = ? ' +
         'ORDER BY active DESC, time_created DESC LIMIT 8'
     )
     .all(OPENCODE_GO_INTEGRATION_ID)
-  for (const row of rows) {
+
+  let fallbackGoKey: string | null = null
+  for (const row of goRows) {
     if (!isRecord(row) || typeof row.value !== 'string') {
       continue
     }
     try {
       const key = keyFromCredentialRecord(JSON.parse(row.value), 'key')
-      if (key) {
+      if (!key) {
+        continue
+      }
+      if (row.active === 1) {
         return key
+      }
+      fallbackGoKey ??= key
+    } catch {
+      continue
+    }
+  }
+
+  const consoleRows: unknown[] = database
+    .prepare(
+      'SELECT value FROM credential WHERE integration_id = ? ' +
+        'ORDER BY active DESC, time_created DESC LIMIT 8'
+    )
+    .all(OPENCODE_CONSOLE_INTEGRATION_ID)
+  for (const row of consoleRows) {
+    if (!isRecord(row) || typeof row.value !== 'string') {
+      continue
+    }
+    try {
+      const token = oauthAccessFromCredentialRecord(JSON.parse(row.value))
+      if (token) {
+        return token
       }
     } catch {
       continue
     }
   }
-  return null
+
+  return fallbackGoKey
 }
 
 /** OpenCode 2 imports auth.json once, then /connect writes SQLite; fresh installs can have no legacy entry.
