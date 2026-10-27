@@ -1,4 +1,5 @@
 import {
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -80,5 +81,38 @@ describe('sweepStaleStagedStartupCommands', () => {
     utimesSync(unrelated, staleSeconds, staleSeconds)
     sweepStaleStagedStartupCommands({ directory, now })
     expect(readdirSync(directory).sort()).toEqual(['orca-launch-bbbb.sh', 'something-else.sh'])
+  })
+})
+
+describe('sandboxed inner-shell startup staging', () => {
+  it('types a 300-byte line containing single quotes directly when given the inner bash shell', () => {
+    const launchStaging = join(directory, 'launch-staging')
+    const line = `claude --model haiku 'it's ${'a'.repeat(270)}'`
+    expect(Buffer.byteLength(line)).toBeGreaterThanOrEqual(295)
+    expect(Buffer.byteLength(line)).toBeLessThanOrEqual(512)
+    const staged = stageStartupCommand({
+      command: line,
+      shellPath: 'bash',
+      orcaBuiltLine: true,
+      platform: 'linux',
+      directory: launchStaging
+    })
+    expect(staged).toEqual({ command: line, delivery: 'typed' })
+  })
+
+  it('stages a 700-byte line into launch-staging and sources it with dot for inner bash', () => {
+    const launchStaging = join(directory, 'launch-staging')
+    mkdirSync(launchStaging, { mode: 0o700 })
+    const line = `claude --model haiku '${'p'.repeat(700)}'`
+    const staged = stageStartupCommand({
+      command: line,
+      shellPath: 'bash',
+      orcaBuiltLine: true,
+      platform: 'linux',
+      directory: launchStaging
+    })
+    expect(staged.delivery).toBe('staged')
+    expect(staged.scriptPath?.startsWith(`${launchStaging}/orca-launch-`)).toBe(true)
+    expect(staged.command).toBe(`. '${staged.scriptPath}'`)
   })
 })

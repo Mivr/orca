@@ -76,6 +76,7 @@ export const SANDBOX_CPUS = '2.0'
 /** Marker env: orcad stamps the target container, the daemon rewrites the spawn. */
 export const SANDBOX_CONTAINER_ENV = 'ORCA_SANDBOX_NAME'
 export const SANDBOX_WORKTREE_ENV = 'ORCA_SANDBOX_WORKTREE'
+export const SANDBOX_LAUNCH_STAGING_ENV = 'ORCA_SANDBOX_LAUNCH_STAGING_DIR'
 
 /** Container HOME stamped at create (`-e HOME=...` in the manager). */
 export const SANDBOX_HOME = '/var/tmp'
@@ -249,7 +250,8 @@ export const SANDBOX_AUTH_MOUNT_KEYS = [
   'hook-spool',
   'codex-runtime-home',
   'opencode-overlays',
-  'opencode-shared'
+  'opencode-shared',
+  'launch-staging'
 ] as const
 export type SandboxAuthMountKey = (typeof SANDBOX_AUTH_MOUNT_KEYS)[number]
 

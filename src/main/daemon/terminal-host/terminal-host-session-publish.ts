@@ -1,16 +1,13 @@
-import { terminalStartError } from '../../../shared/terminal/pty/lifecycle/terminal-start-failure'
-import type { PtyCreationDisposition } from '../../../shared/terminal/pty/lifecycle/pty-creation-disposition'
-import type { SubprocessHandle } from '../sessions/session-subprocess-handle'
-import type { WslGuestRoot } from '../../../shared/wsl-guest-root-marker'
-import { buildStartupCommandSubmission } from '../../../shared/startup-command-submission'
-import {
-  stageStartupCommand,
-  startupStagingFailureNotice,
-  type StartupCommandStaging
-} from '../../../shared/startup-command-staging'
-import { resolvePtyOwnerBackend } from '../../../shared/terminal/pty/lifecycle/pty-owner-backend'
-import { getDaemonSessionResultMetadata } from '../protocol/daemon-create-or-attach-result'
-import { Session } from '../sessions/session'
+import { terminalStartError } from ../../../shared/terminal/pty/lifecycle/terminal-start-failure
+import type { PtyCreationDisposition } from ../../../shared/terminal/pty/lifecycle/pty-creation-disposition
+import type { SubprocessHandle } from ../sessions/session-subprocess-handle
+import type { WslGuestRoot } from ../../../shared/wsl-guest-root-marker
+import { buildStartupCommandSubmission } from ../../../shared/startup-command-submission
+import type { StartupCommandStaging } from ../../../shared/startup-command-staging
+import { stageSessionStartupCommand } from ./terminal-host-startup-staging
+import { resolvePtyOwnerBackend } from ../../../shared/terminal/pty/lifecycle/pty-owner-backend
+import { getDaemonSessionResultMetadata } from ../protocol/daemon-create-or-attach-result
+import { Session } from ../sessions/session
 import {
   observeReturnedTerminalProcess,
   recoverUnpublishedTerminalSession,
@@ -199,23 +196,14 @@ export async function spawnAndPublishSession(
     // Diagnostics must never turn a live PTY into a failed create.
   }
   if (startupCommandWritten && opts.command) {
-    staging.current = stageStartupCommand({
+    staging.current = stageSessionStartupCommand({
       command: opts.command,
-      shellPath: subprocess.shellPath,
-      orcaBuiltLine: opts.launchAgent !== undefined
+      sessionId: opts.sessionId,
+      subprocess,
+      orcaBuiltLine: opts.launchAgent !== undefined,
+      session,
+      reportReadinessEvent: deps.reportReadinessEvent
     })
-    const notice = startupStagingFailureNotice(staging.current)
-    if (notice) {
-      session.startupIngress.accept(notice)
-      try {
-        deps.reportReadinessEvent?.('startup-command-stage-failed', {
-          sessionId: opts.sessionId,
-          reason: staging.current.failure
-        })
-      } catch {
-        // Diagnostics must never turn a live PTY into a failed create.
-      }
-    }
     // Why: only Orca-wrapped shells advertise the paste-safe startup barrier.
     session.writeStartupCommand(
       buildStartupCommandSubmission(staging.current.command, {

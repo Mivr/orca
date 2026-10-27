@@ -28,6 +28,8 @@ export function createDaemonPtySubprocessHandle(args: {
   process: pty.IPty
   physicalOwner?: DaemonPtyPhysicalOwner
   shellPath: string
+  stagingShellPath?: string
+  stagingDirectory?: string
   spawnCwd: string
   env: Record<string, string>
   startupCommandDeliveredInShellArgs: boolean
@@ -144,6 +146,8 @@ export function createDaemonPtySubprocessHandle(args: {
         }
       : {}),
     shellPath: args.shellPath,
+    ...(args.stagingShellPath ? { stagingShellPath: args.stagingShellPath } : {}),
+    ...(args.stagingDirectory ? { stagingDirectory: args.stagingDirectory } : {}),
     shellCwd: args.spawnCwd,
     shellPathEnv: args.env.PATH,
     ...(slavePath ? { slavePath } : {}),

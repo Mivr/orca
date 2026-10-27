@@ -126,6 +126,14 @@ export async function createPtySubprocess(opts: PtySubprocessOptions): Promise<S
       process: spawned.process,
       physicalOwner: spawned.physicalOwner,
       shellPath: spawned.shellPath,
+      ...(sandboxRewrite
+        ? {
+            stagingShellPath: sandboxRewrite.stagingShellPath,
+            ...(sandboxRewrite.stagingDirectory
+              ? { stagingDirectory: sandboxRewrite.stagingDirectory }
+              : {})
+          }
+        : {}),
       spawnCwd: spawned.spawnCwd,
       env,
       startupCommandDeliveredInShellArgs:

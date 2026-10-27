@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -8,7 +8,7 @@ import {
   setSandboxDockerRunner,
   SANDBOX_SLOTS_FULL
 } from './sandbox-manager'
-import { SANDBOX_CONTAINER_ENV } from './sandbox-config'
+import { SANDBOX_CONTAINER_ENV, SANDBOX_LAUNCH_STAGING_ENV } from './sandbox-config'
 
 let runs = 0
 let dir: string
@@ -16,6 +16,8 @@ let dir: string
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'sandbox-admission-'))
   process.env.ORCA_SANDBOX_AGENTS = '1'
+  vi.stubEnv('ORCA_USER_DATA', join(dir, 'userdata'))
+  vi.stubEnv('ORCA_USER_DATA_PATH', join(dir, 'config-orca'))
   resetSandboxManagerForTest()
   runs = 0
   setSandboxDockerRunner(async ({ args }) => {
@@ -35,6 +37,7 @@ afterEach(() => {
   setSandboxDockerRunner(null)
   resetSandboxManagerForTest()
   rmSync(dir, { recursive: true, force: true })
+  vi.unstubAllEnvs()
 })
 
 describe('isSandboxSpawnCandidate', () => {
@@ -72,6 +75,7 @@ describe('admitSandboxSpawn', () => {
     mkdirSync(cwd, { recursive: true })
     const stamp = await admitSandboxSpawn({ worktreeId: 'w', cwd, launchAgent: 'codex' })
     expect(stamp?.[SANDBOX_CONTAINER_ENV]).toMatch(/^orca-sandbox-/)
+    expect(stamp?.[SANDBOX_LAUNCH_STAGING_ENV]).toBe(join(dir, 'userdata', 'launch-staging'))
     expect(runs).toBe(1)
   })
 

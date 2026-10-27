@@ -14,6 +14,7 @@
  */
 import {
   SANDBOX_CONTAINER_ENV,
+  SANDBOX_LAUNCH_STAGING_ENV,
   pickSandboxEnv,
   pickSandboxHookSpawnEnv,
   sandboxInnerShell
@@ -22,6 +23,8 @@ import {
 export type SandboxExecRewrite = {
   shellPath: string
   shellArgs: string[]
+  stagingShellPath: string
+  stagingDirectory?: string
 }
 
 export function buildSandboxExecRewrite(args: {
@@ -41,6 +44,7 @@ export function buildSandboxExecRewrite(args: {
   for (const [key, value] of Object.entries(execEnv)) {
     envFlags.push('-e', `${key}=${value}`)
   }
+  const stagingDirectory = args.env[SANDBOX_LAUNCH_STAGING_ENV]?.trim()
   return {
     shellPath: 'docker',
     shellArgs: [
@@ -52,7 +56,9 @@ export function buildSandboxExecRewrite(args: {
       args.containerName,
       innerShell,
       ...args.hostShellArgs
-    ]
+    ],
+    stagingShellPath: innerShell,
+    ...(stagingDirectory ? { stagingDirectory } : {})
   }
 }
 

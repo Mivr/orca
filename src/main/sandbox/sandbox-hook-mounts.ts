@@ -41,6 +41,8 @@ export type SandboxHookMountDirs = {
   opencodeOverlaysDir: string
   /** Opencode shared config dir (ensured to exist). */
   opencodeSharedDir: string
+  /** Shared launch-staging dir under userData (`0700`, same-path `:rw`). */
+  launchStagingDir?: string
 }
 
 /** Every hook-mount key, so an invariant test can pin the full set. */
@@ -54,7 +56,8 @@ export const SANDBOX_HOOK_MOUNT_KEYS: readonly SandboxAuthMountKey[] =
       key === 'hook-spool' ||
       key === 'codex-runtime-home' ||
       key === 'opencode-overlays' ||
-      key === 'opencode-shared'
+      key === 'opencode-shared' ||
+      key === 'launch-staging'
   )
 
 /**
@@ -64,6 +67,12 @@ export const SANDBOX_HOOK_MOUNT_KEYS: readonly SandboxAuthMountKey[] =
  * path for later spawns in a container admitted by an earlier one. All are
  * orcad-userData state (never secrets, never logged).
  */
+export function resolveSandboxLaunchStagingDir(
+  userDataPath: string = resolveUserDataPath()
+): string {
+  return join(userDataPath, 'launch-staging')
+}
+
 export function resolveSandboxHookMountDirs(
   orcadHome: string = process.env.HOME ?? '/home/mihail',
   userDataPath: string = resolveUserDataPath(),
@@ -76,7 +85,14 @@ export function resolveSandboxHookMountDirs(
   const opencodeOverlaysDir = join(userDataPath, 'opencode-config-overlays')
   const opencodeSharedDir = join(userDataPath, 'opencode-hooks', 'shared')
   const opencodeSharedPluginsDir = join(opencodeSharedDir, 'plugins')
-  for (const dir of [spoolDir, opencodeOverlaysDir, opencodeSharedDir, opencodeSharedPluginsDir]) {
+  const launchStagingDir = resolveSandboxLaunchStagingDir(userDataPath)
+  for (const dir of [
+    spoolDir,
+    opencodeOverlaysDir,
+    opencodeSharedDir,
+    opencodeSharedPluginsDir,
+    launchStagingDir
+  ]) {
     try {
       mkdirSync(dir, { recursive: true, mode: 0o700 })
     } catch {
@@ -90,7 +106,8 @@ export function resolveSandboxHookMountDirs(
     spoolDir,
     codexRuntimeHome,
     opencodeOverlaysDir,
-    opencodeSharedDir
+    opencodeSharedDir,
+    launchStagingDir
   }
 }
 
@@ -179,6 +196,17 @@ export function sandboxHookMountSpecs(hookDirs: SandboxHookMountDirs): SandboxHo
       containerPath: hookDirs.opencodeSharedDir,
       kind: 'dir',
       mode: 'rw'
-    }
+    },
+    ...(hookDirs.launchStagingDir
+      ? [
+          {
+            key: 'launch-staging' as const,
+            hostPath: hookDirs.launchStagingDir,
+            containerPath: hookDirs.launchStagingDir,
+            kind: 'dir' as const,
+            mode: 'rw' as const
+          }
+        ]
+      : [])
   ]
 }

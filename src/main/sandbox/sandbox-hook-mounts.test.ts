@@ -28,7 +28,8 @@ describe('sandbox-hook-mounts', () => {
       'hook-spool',
       'codex-runtime-home',
       'opencode-overlays',
-      'opencode-shared'
+      'opencode-shared',
+      'launch-staging'
     ])
   })
 
@@ -44,7 +45,8 @@ describe('sandbox-hook-mounts', () => {
       spoolDir: join(userData, 'agent-hooks', 'spool'),
       codexRuntimeHome: codexHome,
       opencodeOverlaysDir: join(userData, 'opencode-config-overlays'),
-      opencodeSharedDir: join(userData, 'opencode-hooks', 'shared')
+      opencodeSharedDir: join(userData, 'opencode-hooks', 'shared'),
+      launchStagingDir: join(userData, 'launch-staging')
     })
     // Ensured even with no prior spawn: the mount gate must see them.
     expect(existsSync(join(userData, 'agent-hooks', 'spool'))).toBe(true)
@@ -65,10 +67,12 @@ describe('sandbox-hook-mounts', () => {
     expect(modes.get('codex-runtime-home')).toBe('rw')
     expect(modes.get('opencode-overlays')).toBe('rw')
     expect(modes.get('opencode-shared')).toBe('rw')
+    expect(modes.get('launch-staging')).toBe('rw')
     const byKey = new Map(sandboxHookMountSpecs(hookDirs).map((spec) => [spec.key, spec]))
     // Absolute command paths resolve same-path; $HOME callers land in /var/tmp.
     expect(byKey.get('hook-scripts-abs')?.containerPath).toBe(hookDirs.scriptsDir)
     expect(byKey.get('hook-scripts-home')?.containerPath).toBe('/var/tmp/.orca/agent-hooks')
     expect(byKey.get('opencode-shared')?.containerPath).toBe(hookDirs.opencodeSharedDir)
+    expect(byKey.get('launch-staging')?.containerPath).toBe(hookDirs.launchStagingDir)
   })
 })

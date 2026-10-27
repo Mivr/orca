@@ -8,7 +8,10 @@
  */
 import { runProcess } from '@orca/process-host'
 import { cleanupSandboxEnvFile, writeSandboxEnvFile } from './sandbox-env-file'
-import { resolveSandboxHookMountDirs } from './sandbox-hook-mounts'
+import {
+  resolveSandboxHookMountDirs,
+  resolveSandboxLaunchStagingDir
+} from './sandbox-hook-mounts'
 import {
   AGENT_BROWSER_ARGS_ENV,
   joinAgentBrowserArgs,
@@ -26,6 +29,7 @@ import {
   SANDBOX_CPUS,
   SANDBOX_HOME,
   SANDBOX_IMAGE,
+  SANDBOX_LAUNCH_STAGING_ENV,
   SANDBOX_MANAGED_LABEL,
   SANDBOX_SLOTS_FULL,
   SANDBOX_WORKTREE_ENV,
@@ -334,6 +338,7 @@ export async function stampSandboxSpawnEnv(args: {
   })
   return {
     [SANDBOX_CONTAINER_ENV]: name,
-    [SANDBOX_WORKTREE_ENV]: args.worktreeId
+    [SANDBOX_WORKTREE_ENV]: args.worktreeId,
+    [SANDBOX_LAUNCH_STAGING_ENV]: resolveSandboxLaunchStagingDir()
   }
 }

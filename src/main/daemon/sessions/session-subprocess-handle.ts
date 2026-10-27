@@ -24,6 +24,10 @@ export type SubprocessHandle = {
   startupCommandDeliveredInShellArgs?: boolean
   /** Report the actual fallback shell so unsupported readiness markers cannot stall startup. */
   shellPath?: string
+  /** Inner container shell for startup command staging when shellPath is a transport wrapper (`docker`). */
+  stagingShellPath?: string
+  /** Shared staging directory visible inside the container when sandboxed. */
+  stagingDirectory?: string
   shellCwd?: string
   shellPathEnv?: string
   /** The PTY's foreground process group (tcgetpgrp); absent for ConPTY. */

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { buildSandboxExecRewrite, rewritePtySpawnForSandbox } from './sandbox-exec-rewrite'
-import { SANDBOX_CONTAINER_ENV } from '../../sandbox/sandbox-config'
+import {
+  SANDBOX_CONTAINER_ENV,
+  SANDBOX_LAUNCH_STAGING_ENV
+} from '../../sandbox/sandbox-config'
 
 describe('sandbox-exec-rewrite', () => {
   it('rewrites the shell into docker exec with the same-path cwd', () => {
@@ -100,5 +103,22 @@ describe('sandbox-exec-rewrite', () => {
     expect(joined).not.toContain('-e HOME=')
     expect(joined).not.toContain('SSH_AUTH_SOCK')
     expect(joined).not.toContain(SANDBOX_CONTAINER_ENV)
+  })
+
+  it('reports the inner container shell and launch-staging dir without leaking the stamp flag', () => {
+    const rewrite = buildSandboxExecRewrite({
+      containerName: 'orca-sandbox-abc',
+      hostShellPath: '/bin/zsh',
+      hostShellArgs: ['-l'],
+      cwd: '/wt',
+      env: {
+        [SANDBOX_CONTAINER_ENV]: 'orca-sandbox-abc',
+        [SANDBOX_LAUNCH_STAGING_ENV]: '/home/mihail/.orca-orcad-data/launch-staging'
+      }
+    })
+    expect(rewrite.shellPath).toBe('docker')
+    expect(rewrite.stagingShellPath).toBe('bash')
+    expect(rewrite.stagingDirectory).toBe('/home/mihail/.orca-orcad-data/launch-staging')
+    expect(rewrite.shellArgs.join(' ')).not.toContain(SANDBOX_LAUNCH_STAGING_ENV)
   })
 })

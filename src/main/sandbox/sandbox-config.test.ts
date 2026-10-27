@@ -187,7 +187,8 @@ describe('sandbox-config', () => {
       'hook-spool',
       'codex-runtime-home',
       'opencode-overlays',
-      'opencode-shared'
+      'opencode-shared',
+      'launch-staging'
     ])
     expect(sandboxAuthMounts({ ORCA_SANDBOX_AUTH_MOUNTS: 'ssh,gh' })).toEqual(['ssh', 'gh'])
     expect(sandboxAuthMounts({ ORCA_SANDBOX_AUTH_MOUNTS: '' })).toEqual([])

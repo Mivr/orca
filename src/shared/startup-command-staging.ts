@@ -74,7 +74,7 @@ function stagedScriptLine(shellName: string | null, quotedPath: string): string 
     : `/bin/sh ${quotedPath}`
 }
 
-let staleSweepStarted = false
+const staleSweptDirectories = new Set<string>()
 
 export function stageStartupCommand(args: {
   command: string
@@ -88,8 +88,8 @@ export function stageStartupCommand(args: {
     return { command: args.command, delivery: 'typed' }
   }
   const directory = args.directory ?? tmpdir()
-  if (!staleSweepStarted) {
-    staleSweepStarted = true
+  if (!staleSweptDirectories.has(directory)) {
+    staleSweptDirectories.add(directory)
     // Crash cleanup must not delay launch.
     setTimeout(() => sweepStaleStagedStartupCommands({ directory }), 0).unref?.()
   }

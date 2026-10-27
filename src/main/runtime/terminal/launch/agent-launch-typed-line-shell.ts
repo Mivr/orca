@@ -1,4 +1,5 @@
 import { basename } from 'node:path'
+import { isSandboxRoutingEnabled, sandboxInnerShell } from '../sandbox/sandbox-config'
 
 /** Match local spawn shell precedence: request → default setting → SHELL.
  * Remote relays and Windows shell families cannot be named by this POSIX lookup. */
@@ -8,8 +9,10 @@ export function nameLocalTypedLineShell(args: {
   defaultShellSetting?: string
   platform?: NodeJS.Platform
   envShell?: string
+  env?: NodeJS.ProcessEnv
 }): string | undefined {
-  if (args.isRemote || (args.platform ?? process.platform) === 'win32') {
+  const effectivePlatform = args.platform ?? process.platform
+  if (args.isRemote || effectivePlatform === 'win32') {
     return undefined
   }
   const shellPath =
@@ -17,6 +20,9 @@ export function nameLocalTypedLineShell(args: {
     args.defaultShellSetting?.trim() ||
     (args.envShell ?? process.env.SHELL) ||
     '/bin/zsh'
+  if (effectivePlatform === 'linux' && isSandboxRoutingEnabled(args.env ?? process.env)) {
+    return sandboxInnerShell(shellPath)
+  }
   return basename(shellPath).toLowerCase()
 }
 
