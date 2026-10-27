@@ -6,7 +6,10 @@ import { tuiAgentDisplayName } from '../../shared/agent-launch/catalog/tui-agent
 import type { ClaudeUsageStore } from '../claude-usage/store'
 import type { CodexUsageStore } from '../codex-usage/store'
 import type { Store } from '../persistence/loading-store/store'
-import type { AutomationRun } from '../../shared/automations/history/automation-run'
+import {
+  isFinalAutomationRunStatus,
+  type AutomationRun
+} from '../../shared/automations/history/automation-run'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { AutomationService } from './service'
 import { createRunTerminalRetention, type RunTerminalRetention } from './run-terminal-retention'
@@ -15,6 +18,7 @@ import {
   isTuiAgent,
   TUI_AGENT_CONFIG
 } from '../../shared/agent-launch/catalog/tui-agent-config'
+import { isSandboxRoutingEnabled } from '../sandbox/sandbox-config'
 import { launchAutomationTerminalAgent, runOwnHandle } from './automation-terminal-launch'
 import {
   AGENT_HOOKS_REVIEW_BLOCKED_ERROR,
@@ -22,6 +26,14 @@ import {
 } from './runtime-terminal-run-observer'
 import { closeEarlierHookReviewRunTerminals } from './hook-review-blocked-run-terminals'
 import { automationRunSetupSkip } from './automation-run-setup-skip'
+import {
+  captureMissingRunOutputSnapshot,
+  confirmRunShellAloneWithSandbox,
+  pruneSandboxAutomationWorktrees,
+  releaseSandboxIfWorktreeIdle,
+  sandboxRunGraceMs,
+  sandboxSweepIntervalMs
+} from './sandbox-run-retention'
 
 const MAX_REMEMBERED_LAUNCHES = 256
 
@@ -45,6 +57,7 @@ export function createRuntimeAutomationService(input: {
         store.listAutomations().find((entry) => entry.id === run.automationId)?.agentId
       )
   })
+  let onAutomationsUpdated: (() => void) | null = null
   const service = new AutomationService(store, {
     claudeUsage,
     codexUsage,
@@ -152,7 +165,10 @@ export function createRuntimeAutomationService(input: {
         return observation
       }
     },
-    onAutomationsChanged: (payload) => runtime.notifyAutomationsChanged(payload),
+    onAutomationsChanged: (payload) => {
+      runtime.notifyAutomationsChanged(payload)
+      onAutomationsUpdated?.()
+    },
     allowRemoteHostScheduling: input.allowRemoteHostScheduling,
     chatDispatcher: async (request) => {
       const { terminalHandle, ...launched } = await launchAutomationChatAgent(runtime, {
@@ -205,6 +221,7 @@ export function createRuntimeAutomationService(input: {
     runTerminalRetention: (owner) => createRuntimeRunTerminalRetention(owner, store, runtime)
   })
   runtime.setAutomationService(service)
+  onAutomationsUpdated = bindSandboxRunGraceSweeps(service, store)
   return service
 }
 
@@ -234,12 +251,23 @@ function createRuntimeRunTerminalRetention(
     runTerminalAlive: (run) => runOwnHandle(runtime, run) !== null,
     shellAloneAtPrompt: (run) =>
       run.terminalPtyId
-        ? runtime.confirmTerminalShellAlone(run.terminalPtyId)
+        ? confirmRunShellAloneWithSandbox(
+            () => runtime.confirmTerminalShellAlone(run.terminalPtyId!),
+            run.workspaceId
+          )
         : Promise.resolve(false),
     closeRunTerminal: async (run) => {
       const handle = runOwnHandle(runtime, run)
       if (!handle) {
         return false
+      }
+      const captured = await captureMissingRunOutputSnapshot(runtime, handle, run)
+      if (captured) {
+        await service.markDispatchResult({
+          runId: run.id,
+          status: run.status,
+          outputSnapshot: captured
+        })
       }
       // Preserve user-created splits in the same tab.
       await runtime.closeTerminal(handle)
@@ -258,6 +286,11 @@ function createRuntimeRunTerminalRetention(
       if (!run.workspaceId || !ptyId) {
         return false
       }
+      const captured = await captureMissingRunOutputSnapshot(
+        runtime,
+        runOwnHandle(runtime, run),
+        run
+      )
       try {
         // Sleep only this PTY, preserving other live terminals and the agent resume state.
         const sleep = await runtime.sleepTerminalsForWorktree(`id:${run.workspaceId}`, {
@@ -275,9 +308,23 @@ function createRuntimeRunTerminalRetention(
         return false
       }
       // Preserve tab and pane keys for resuming the slept agent.
-      await service.markDispatchResult({ runId: run.id, status: run.status, terminalPtyId: null })
+      await service.markDispatchResult({
+        runId: run.id,
+        status: run.status,
+        terminalPtyId: null,
+        ...(captured ? { outputSnapshot: captured } : {})
+      })
       return true
     },
+    releaseRunSandbox: (run) => releaseSandboxIfWorktreeIdle(runtime, run.workspaceId),
+    pruneAutomationWorktrees: (automationId, runs) =>
+      pruneSandboxAutomationWorktrees({
+        automationId,
+        runs,
+        store,
+        runtime,
+        runTerminalAlive: (run) => runOwnHandle(runtime, run) !== null
+      }),
     inAutomationLane: (automationId, operation) =>
       service.runInAutomationLane(automationId, operation),
     forgetRunTerminal: async (run) => {
@@ -295,6 +342,67 @@ function createRuntimeRunTerminalRetention(
       })
     }
   })
+}
+
+/**
+ * Fork: in sandbox mode a finished run releases its container after a short grace. Upstream sweeps
+ * on the service's 60s tick; sandbox mode adds a faster sweep plus a one-shot sweep at grace end.
+ */
+function bindSandboxRunGraceSweeps(service: AutomationService, store: Store): () => void {
+  const retention = service.runTerminalRetention
+  if (!retention) {
+    return () => {}
+  }
+  const pendingGraceTimers = new Set<ReturnType<typeof setTimeout>>()
+  const scheduledFinalRuns = new Set<string>()
+  let sweepTimer: ReturnType<typeof setInterval> | null = null
+  const noteFinalRunsAndScheduleSweep = (): void => {
+    if (!isSandboxRoutingEnabled()) {
+      return
+    }
+    let newlyFinal = false
+    for (const run of store.listAutomationRuns()) {
+      if (
+        isFinalAutomationRunStatus(run.status) &&
+        run.terminalPtyId !== null &&
+        !scheduledFinalRuns.has(run.id)
+      ) {
+        scheduledFinalRuns.add(run.id)
+        retention.noteRunFinished(run.id)
+        newlyFinal = true
+      }
+    }
+    if (newlyFinal) {
+      const graceTimer = setTimeout(() => {
+        pendingGraceTimers.delete(graceTimer)
+        void retention.sweep()
+      }, sandboxRunGraceMs() + 250)
+      graceTimer.unref?.()
+      pendingGraceTimers.add(graceTimer)
+    }
+  }
+  const start = service.start.bind(service)
+  const stop = service.stop.bind(service)
+  service.start = () => {
+    start()
+    if (isSandboxRoutingEnabled()) {
+      sweepTimer ??= setInterval(() => void retention.sweep(), sandboxSweepIntervalMs())
+      sweepTimer.unref?.()
+    }
+    noteFinalRunsAndScheduleSweep()
+  }
+  service.stop = () => {
+    for (const graceTimer of pendingGraceTimers) {
+      clearTimeout(graceTimer)
+    }
+    pendingGraceTimers.clear()
+    if (sweepTimer) {
+      clearInterval(sweepTimer)
+      sweepTimer = null
+    }
+    stop()
+  }
+  return noteFinalRunsAndScheduleSweep
 }
 
 function automationAgentCommands(agentId: string | undefined): string[] {

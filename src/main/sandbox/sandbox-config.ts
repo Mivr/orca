@@ -9,6 +9,32 @@
 
 /** Max concurrent sandboxed agents. Admission rejects past this — never queues. */
 export const MAX_SANDBOX_SLOTS = 10
+export const SANDBOX_MAX_SLOTS_ENV = 'ORCA_SANDBOX_MAX_SLOTS'
+export const SANDBOX_INTERACTIVE_RESERVE_ENV = 'ORCA_SANDBOX_INTERACTIVE_RESERVE'
+export const DEFAULT_SANDBOX_INTERACTIVE_RESERVE = 2
+
+function parseNonNegativeIntEnv(raw: string | undefined, fallback: number): number {
+  if (raw === undefined || raw.trim() === '') {
+    return fallback
+  }
+  const parsed = Number.parseInt(raw.trim(), 10)
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback
+}
+
+export function sandboxMaxSlots(env: NodeJS.ProcessEnv = process.env): number {
+  return Math.max(1, parseNonNegativeIntEnv(env[SANDBOX_MAX_SLOTS_ENV], MAX_SANDBOX_SLOTS))
+}
+
+export function sandboxInteractiveReserve(env: NodeJS.ProcessEnv = process.env): number {
+  return parseNonNegativeIntEnv(
+    env[SANDBOX_INTERACTIVE_RESERVE_ENV],
+    DEFAULT_SANDBOX_INTERACTIVE_RESERVE
+  )
+}
+
+export function sandboxAutomationMaxSlots(env: NodeJS.ProcessEnv = process.env): number {
+  return Math.max(0, sandboxMaxSlots(env) - sandboxInteractiveReserve(env))
+}
 
 /** Surfaced when admission refuses a spawn past the cap. */
 export const SANDBOX_SLOTS_FULL = 'sandbox_slots_full'

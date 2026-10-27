@@ -12,11 +12,7 @@ import {
   resolveSandboxHookMountDirs,
   resolveSandboxLaunchStagingDir
 } from './sandbox-hook-mounts'
-import {
-  AGENT_BROWSER_ARGS_ENV,
-  joinAgentBrowserArgs,
-  sandboxBrowserGpuArgs
-} from '../browser/agent-browser-gpu-flags'
+import { buildSandboxDockerRunArgs } from './sandbox-run-args'
 import {
   resetBindMountsForTest,
   resolveSandboxMounts,
@@ -24,23 +20,28 @@ import {
   type HostMount
 } from './sandbox-bind-mounts'
 import {
-  MAX_SANDBOX_SLOTS,
   SANDBOX_CONTAINER_ENV,
-  SANDBOX_CPUS,
-  SANDBOX_HOME,
-  SANDBOX_IMAGE,
   SANDBOX_LAUNCH_STAGING_ENV,
   SANDBOX_MANAGED_LABEL,
   SANDBOX_SLOTS_FULL,
   SANDBOX_WORKTREE_ENV,
   SANDBOX_WORKTREE_LABEL,
   isSandboxRoutingEnabled,
+  sandboxAutomationMaxSlots,
   sandboxContainerName,
-  sandboxDriDevices,
-  sandboxExtraHosts,
-  sandboxGpuGroups,
-  sandboxMemory
+  sandboxMaxSlots
 } from './sandbox-config'
+import {
+  countPendingAutomationReservations,
+  currentAutomationReservation,
+  isSandboxWorktreeAgentRunning,
+  isSandboxWorktreeShellAlone,
+  markAutomationReservationMaterialized,
+  registerSandboxSlotsDriver,
+  resetSandboxSlotsForTest,
+  tryWithAutomationSandboxSlot,
+  withSandboxAdmissionLock
+} from './sandbox-slots'
 
 export { SANDBOX_SLOTS_FULL }
 export { sandboxContainerName }
@@ -99,13 +100,19 @@ export function resetSandboxManagerForTest(): void {
   listedAtMs = 0
   listedNames = []
   resetBindMountsForTest()
+  resetSandboxSlotsForTest()
 }
 
 export function noteSandboxRejectionForTest(worktreeId: string, atMs: number): void {
   lastRejectionAtByWorktree.set(worktreeId, atMs)
 }
 
-export { resolveSandboxMounts }
+export {
+  isSandboxWorktreeAgentRunning,
+  isSandboxWorktreeShellAlone,
+  resolveSandboxMounts,
+  tryWithAutomationSandboxSlot
+}
 
 async function listSandboxContainers(): Promise<string[]> {
   const result = await docker([
@@ -149,13 +156,27 @@ export async function ensureSandboxForWorktree(args: {
   worktreePath: string
   env?: Record<string, string>
 }): Promise<string> {
+  const reservation = currentAutomationReservation()
+  return withSandboxAdmissionLock(() => ensureSandboxLocked(args, reservation))
+}
+
+async function ensureSandboxLocked(
+  args: { worktreeId: string; worktreePath: string; env?: Record<string, string> },
+  reservation: ReturnType<typeof currentAutomationReservation>
+): Promise<string> {
   const name = sandboxContainerName(args.worktreeId)
-  const names = await cachedSandboxNames()
+  const names = reservation ? await listSandboxContainers() : await cachedSandboxNames()
+  if (reservation) {
+    refreshListedNames(names)
+  }
   if (names.includes(name) || liveSandboxByWorktree.get(args.worktreeId) === name) {
     liveSandboxByWorktree.set(args.worktreeId, name)
+    markAutomationReservationMaterialized(reservation)
     return name
   }
-  if (names.length >= MAX_SANDBOX_SLOTS) {
+  const slotCap = reservation ? sandboxAutomationMaxSlots() : sandboxMaxSlots()
+  const occupied = names.length + countPendingAutomationReservations(reservation)
+  if (occupied >= slotCap) {
     lastRejectionAtByWorktree.set(args.worktreeId, Date.now())
     throw new SandboxSlotsFullError(args.worktreeId)
   }
@@ -174,45 +195,14 @@ export async function ensureSandboxForWorktree(args: {
     hookDirs: resolveSandboxHookMountDirs()
   })
   const envFile = writeSandboxEnvFile(args.env)
-  // Why stamped, not baked: hosts without DRI opt out via
-  // ORCA_SANDBOX_BROWSER_GPU_ARGS='' and every agent-browser launch inside
-  // inherits the default without per-command flags.
-  const browserGpuArgs = joinAgentBrowserArgs(sandboxBrowserGpuArgs())
-  const runArgs = [
-    'run',
-    '-d',
-    '--name',
+  const runArgs = buildSandboxDockerRunArgs({
     name,
-    '--user',
-    '1000:1000',
-    `--memory=${sandboxMemory()}`,
-    `--cpus=${SANDBOX_CPUS}`,
-    // GPU passthrough: host AMD render node + video/render gids so Chromium
-    // uses radeonsi instead of SwiftShader. Env-overridable, empty opts out.
-    ...sandboxDriDevices().flatMap((device) => ['--device', device]),
-    ...sandboxGpuGroups().flatMap((group) => ['--group-add', group]),
-    ...sandboxExtraHosts().flatMap((host) => ['--add-host', host]),
-    // Why /var/tmp: the image default HOME (/root) is unreadable as uid 1000,
-    // no host home may leak in (§2 deny), and agent CLIs refuse a temporary
-    // HOME (/tmp) for helper binaries. Container-private writable layer;
-    // phase 2 owns a per-sandbox home volume.
-    '-e',
-    `HOME=${SANDBOX_HOME}`,
-    // Hardware-GL default for in-sandbox agent-browser launches.
-    ...(browserGpuArgs ? ['-e', `${AGENT_BROWSER_ARGS_ENV}=${browserGpuArgs}`] : []),
-    '--label',
-    `${SANDBOX_MANAGED_LABEL}=1`,
-    '--label',
-    `${SANDBOX_WORKTREE_LABEL}=${args.worktreeId}`,
-    ...mounts.flatMap((mount) => ['-v', mount]),
-    ...authMounts.flatMap((mount) => ['-v', mount]),
-    '-w',
-    args.worktreePath,
-    ...(envFile ? ['--env-file', envFile] : []),
-    SANDBOX_IMAGE,
-    'sleep',
-    'infinity'
-  ]
+    worktreeId: args.worktreeId,
+    worktreePath: args.worktreePath,
+    mounts,
+    authMounts,
+    envFile
+  })
   try {
     const created = await docker(runArgs)
     if (created.code !== 0) {
@@ -225,6 +215,7 @@ export async function ensureSandboxForWorktree(args: {
   }
   liveSandboxByWorktree.set(args.worktreeId, name)
   refreshListedNames([...names, name])
+  markAutomationReservationMaterialized(reservation)
   return name
 }
 
@@ -342,3 +333,14 @@ export async function stampSandboxSpawnEnv(args: {
     [SANDBOX_LAUNCH_STAGING_ENV]: resolveSandboxLaunchStagingDir()
   }
 }
+
+registerSandboxSlotsDriver({
+  listContainers: listSandboxContainers,
+  refreshListedNames,
+  hasLiveWorktreeContainer: (worktreeId, containerName) =>
+    liveSandboxByWorktree.get(worktreeId) === containerName,
+  resolveWorktreeContainerName: (worktreeId) =>
+    liveSandboxByWorktree.get(worktreeId) ?? sandboxContainerName(worktreeId),
+  runDockerTop: (containerName) =>
+    docker(['top', containerName, '-eo', 'pid,ppid,comm,args']).catch(() => null)
+})

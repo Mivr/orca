@@ -13,6 +13,8 @@ import type { AutomationRun } from '../../shared/automations/history/automation-
 import { findReusableAutomationRun } from '../../shared/automations/history/automation-session-reuse'
 import type { OrcaRuntimeService } from '../runtime/orca-runtime'
 import { deliverTerminalAgentLaunchPrompt } from '../runtime/rpc/methods/agent-launch/agent-launch-terminal-prompt'
+import { isSandboxRoutingEnabled } from '../sandbox/sandbox-config'
+import { SandboxSlotsFullError, tryWithAutomationSandboxSlot } from '../sandbox/sandbox-manager'
 import { AutomationRunLaunchError, type AutomationLaunch } from './automation-launch'
 import { AutomationDispatchRefusedError } from './automation-launch-runner'
 import { buildAutomationWorktreeCreateArgs } from './automation-workspace-create'
@@ -40,8 +42,7 @@ export async function launchAutomationTerminalAgent(
     runs: readonly AutomationRun[]
   }
 ): Promise<AutomationTerminalAgentLaunch> {
-  const { automation, run, target } = request
-  const agent = automation.agentId
+  const { automation, target } = request
   const selectedTarget =
     automation.workspaceMode === 'existing'
       ? await resolveLocalExistingWorkspace(runtime, automation, target)
@@ -60,6 +61,35 @@ export async function launchAutomationTerminalAgent(
       return reused
     }
   }
+  // Fork: a fresh launch holds an automation sandbox slot so interactive work keeps its reserve.
+  const existingWorktreeId =
+    automation.workspaceMode === 'existing' ? requireWorkspaceId(automation) : undefined
+  const launched = await tryWithAutomationSandboxSlot({ existingWorktreeId }, () =>
+    launchInReservedSlot(runtime, request, selectedTarget, text)
+  )
+  if (!launched.allowed) {
+    throw new AutomationDispatchRefusedError({ error: 'no free sandbox slot' })
+  }
+  return launched.value
+}
+
+type SelectedAutomationTarget = Awaited<ReturnType<typeof resolveLocalExistingWorkspace>>
+
+async function launchInReservedSlot(
+  runtime: OrcaRuntimeService,
+  request: {
+    automation: Automation
+    run: Pick<AutomationRun, 'id' | 'title' | 'scheduledFor' | 'trigger'>
+    target: Extract<AutomationRunTargetResult, { ok: true }>
+    runs: readonly AutomationRun[]
+  },
+  selectedTarget: SelectedAutomationTarget | undefined,
+  text: string | undefined
+): Promise<AutomationTerminalAgentLaunch> {
+  const { automation, run, target } = request
+  const agent = automation.agentId
+  const selectedWorkspace = selectedTarget?.managedWorktree
+  let createdWorktreeId: string | undefined
   const execution: AgentLaunchSurfaceExecution = {
     runtime,
     intent: {
@@ -91,6 +121,7 @@ export async function launchAutomationTerminalAgent(
           startupAgent,
           ...(startupPrompt ? { startupPrompt } : {})
         })
+        createdWorktreeId = created.worktree.id
         const startup = created.startupTerminal
         if (!startup?.handle) {
           const message =
@@ -155,7 +186,27 @@ export async function launchAutomationTerminalAgent(
         runtime.deliverStartupFollowup(handle, { agent, prompt: prompt.text }, { terminalCreation })
     }
   }
-  const opened = await openAgentLaunch(execution)
+  let opened: Awaited<ReturnType<typeof openAgentLaunch>>
+  try {
+    opened = await openAgentLaunch(execution)
+  } catch (error) {
+    if (
+      error instanceof SandboxSlotsFullError ||
+      (isSandboxRoutingEnabled() && isSlotsFullMessage(error))
+    ) {
+      // A per-run workspace created for a launch that never got a slot is pure litter.
+      if (createdWorktreeId && automation.workspaceMode === 'new_per_run') {
+        await runtime
+          .removeManagedWorktree(`id:${createdWorktreeId}`, {
+            force: true,
+            waitForBackgroundRemoval: true
+          })
+          .catch(() => {})
+      }
+      throw new AutomationDispatchRefusedError({ error: 'no free sandbox slot' })
+    }
+    throw error
+  }
   const { outcome, worktreeId } = opened.surface
   if (outcome.kind !== 'terminal') {
     throw new Error(TERMINAL_ONLY_MESSAGE)
@@ -299,6 +350,10 @@ export function runOwnHandle(
     runtime.getTerminalPtyIdForHandle(handle) === run.terminalPtyId
     ? handle
     : null
+}
+
+function isSlotsFullMessage(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('sandbox_slots_full')
 }
 
 function requireWorkspaceId(automation: Automation): string {
