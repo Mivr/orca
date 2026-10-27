@@ -92,3 +92,17 @@ describe('OpenCode installation uses the current enabled agents', () => {
     expect(readFileSync(join(custom, 'plugins', 'user.js'), 'utf8')).toBe('// user plugin')
   })
 })
+
+it.skipIf(process.platform !== 'linux')(
+  'installs a mounted sandbox-default overlay when ORCA_SANDBOX_AGENTS=1 and no user OPENCODE_CONFIG_DIR is set',
+  () => {
+    vi.stubEnv('ORCA_SANDBOX_AGENTS', '1')
+    const env = buildPtyHostEnv('sandbox-pane', {}, { ...options, launchAgent: 'opencode' })
+    const expectedDir = join(fixture.userData, 'opencode-config-overlays', 'sandbox-default')
+    expect(env.OPENCODE_CONFIG_DIR).toBe(expectedDir)
+    expect(env.ORCA_OPENCODE_CONFIG_DIR).toBe(expectedDir)
+    expect(env.ORCA_OPENCODE_SOURCE_CONFIG_DIR).toBeUndefined()
+    expect(existsSync(plugin(expectedDir, 'opencode'))).toBe(true)
+    expect(existsSync(join(expectedDir, 'tui.json'))).toBe(true)
+  }
+)
