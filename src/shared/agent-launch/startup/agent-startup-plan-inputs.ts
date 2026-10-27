@@ -7,6 +7,7 @@ import {
 } from '../choices/tui-agent-launch-defaults'
 import { resolveStartupShell, type AgentStartupShell } from './tui-agent-startup-shell'
 import { terminalSessionOptionInputs } from './tui-agent-launch-command'
+import { applyOpenCodeExtraModelArgs } from './opencode-extra-model-args'
 import { resolveLocalWindowsAgentStartupShell } from '../../windows-terminal-shell'
 
 /** The settings slice a launch reads; hosts pass their whole `GlobalSettings` row. */
@@ -63,6 +64,7 @@ export function resolveAgentStartupPlanInputs(args: {
       isRemote,
       terminalWindowsShell: settings.terminalWindowsShell
     })
+  const startupShell = resolveStartupShell(platform, shell)
   const options = terminalSessionOptionInputs({
     agent,
     settings,
@@ -71,18 +73,30 @@ export function resolveAgentStartupPlanInputs(args: {
     yieldToAgentArgs: args.sessionOptionsYieldToAgentArgs,
     command: settings.agentCmdOverrides?.[agent],
     extraAgentArgs: args.extraAgentArgs,
-    shell: resolveStartupShell(platform, shell)
+    shell: startupShell
   })
+  const baseAgentArgs = options.agentArgs ?? null
+  const baseEnv = resolveTuiAgentLaunchEnv(agent, settings, platform)
+  // OpenCode 2's TUI has no --model; per-automation models ride --standalone + config env.
+  const resolvedOpenCode =
+    agent === 'opencode'
+      ? applyOpenCodeExtraModelArgs({
+          agentArgs: baseAgentArgs,
+          agentEnv: baseEnv,
+          shell: startupShell
+        })
+      : { agentArgs: baseAgentArgs, agentEnv: baseEnv }
   return {
     agent,
     cmdOverrides: settings.agentCmdOverrides ?? {},
-    agentArgs: options.agentArgs ?? null,
-    agentEnv: resolveTuiAgentLaunchEnv(agent, settings, platform),
     platform,
     shell,
     isRemote,
     sessionOptionsOverrideAgentArgs: false,
     ...options,
+    // After the spread: the OpenCode rewrite must win over the raw option args.
+    agentArgs: resolvedOpenCode.agentArgs,
+    agentEnv: resolvedOpenCode.agentEnv,
     ...(args.suppressStartupUpdatePrompt ? { suppressStartupUpdatePrompt: true } : {})
   }
 }

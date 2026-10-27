@@ -89,6 +89,8 @@ describe('sandbox-config', () => {
       OPENCODE_CONFIG_DIR: '/home/mihail/.orca-orcad-data/opencode-config-overlays/x',
       ORCA_OPENCODE_CONFIG_DIR: '/home/mihail/.orca-orcad-data/opencode-config-overlays/x',
       ORCA_OPENCODE_SOURCE_CONFIG_DIR: '/home/mihail/.config/opencode',
+      ORCA_OPENCODE_PLUGIN_API: 'v2',
+      OPENCODE_CONFIG_CONTENT: '{"model":"opencode-go/deepseek-v4-pro"}',
       GROK_HOME: '/home/mihail/.grok',
       HOME: '/home/mihail',
       SSH_AUTH_SOCK: '/run/agent.sock',
@@ -97,6 +99,8 @@ describe('sandbox-config', () => {
     expect(picked.ORCA_PANE_KEY).toBe('tab:leaf')
     expect(picked.CODEX_HOME).toBe('/home/mihail/.config/orca/codex-runtime-home/home')
     expect(picked.OPENCODE_CONFIG_DIR).toContain('opencode-config-overlays')
+    expect(picked.ORCA_OPENCODE_PLUGIN_API).toBe('v2')
+    expect(picked.OPENCODE_CONFIG_CONTENT).toBe('{"model":"opencode-go/deepseek-v4-pro"}')
     expect(picked).not.toHaveProperty('HOME')
     expect(picked).not.toHaveProperty('SSH_AUTH_SOCK')
     expect(picked).not.toHaveProperty('ORCA_SANDBOX_NAME')

@@ -5,6 +5,7 @@ import {
 import { getAgentSessionOptionLaunchCatalog } from '../../agent-session/options/agent-session-option-catalog'
 import { PI_THINKING_LEVELS } from '../../agent-session/options/structured-agent-session-effective-effort'
 import { findOptionOccurrence } from '../../command-option-occurrence'
+import { stripModelOptionTokens } from './opencode-extra-model-args'
 import {
   quoteStartupArg,
   tokenizeStartupCommand,
@@ -55,7 +56,8 @@ const EXTRA_AGENT_ARG_OPTIONS: Partial<Record<TuiAgent, readonly ExtraAgentArgOp
   pi: [
     { ...MODEL_OPTION, separateValue: true },
     { kind: 'effort', aliases: ['--thinking'], values: PI_THINKING_LEVELS, separateValue: true }
-  ]
+  ],
+  opencode: [MODEL_OR_M_OPTION]
 }
 
 export function supportsExtraAgentArgs(agent: TuiAgent): boolean {
@@ -250,6 +252,9 @@ function removeDefaultsFor(
 ): string[] {
   const catalog = getAgentSessionOptionLaunchCatalog(agent)
   let result = [...tokens]
+  if (agent === 'opencode' && kinds.has('model')) {
+    result = stripModelOptionTokens(result).remaining
+  }
   if (!catalog) {
     // Without launch catalog removers, the allowlisted aliases are the overridden defaults.
     for (const option of EXTRA_AGENT_ARG_OPTIONS[agent] ?? []) {

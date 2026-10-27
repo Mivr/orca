@@ -42,4 +42,29 @@ describe('resolveAgentStartupPlanInputs with extra agent args', () => {
       })
     ).toThrow('"--permission-mode"')
   })
+
+  it('translates opencode --model / -m into --standalone plus OPENCODE_CONFIG_CONTENT', () => {
+    const inputs = resolveAgentStartupPlanInputs({
+      agent: 'opencode',
+      settings: {
+        ...SETTINGS,
+        agentDefaultEnv: {
+          opencode: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ autoupdate: false }) }
+        }
+      },
+      platform: 'linux',
+      isRemote: false,
+      shell: 'posix',
+      extraAgentArgs: '--model opencode-go/deepseek-v4-pro'
+    })
+    expect(inputs.agentArgs).toBe("'--standalone'")
+    expect(JSON.parse(inputs.agentEnv.OPENCODE_CONFIG_CONTENT ?? 'null')).toEqual({
+      autoupdate: false,
+      model: 'opencode-go/deepseek-v4-pro',
+      agents: { build: { model: 'opencode-go/deepseek-v4-pro' } }
+    })
+    const plan = buildAgentStartupPlan({ ...inputs, prompt: 'Run date' })
+    expect(plan?.launchCommand).toBe("opencode '--standalone' --prompt 'Run date'")
+    expect(plan?.launchCommand).not.toContain('--model')
+  })
 })
