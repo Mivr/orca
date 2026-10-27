@@ -14,6 +14,9 @@ const MISSING_COMMAND_PATTERNS = [
   /command not found/i,
   /^\S+: \d+: \S+: not found$/i,
   /unknown command/i,
+  /no such file or directory/i,
+  /cannot open \S+: no such file/i,
+  /permission denied/i,
   /is not recognized as (?:the name of a cmdlet|an internal or external command)/i
 ]
 
@@ -29,6 +32,9 @@ export type IdleAgentTurnEvidence = {
   tail: readonly string[]
   /** Read only when no fresh `done` decides it: the names the agent command may run under. */
   readAgentCommands: () => readonly string[]
+  /** When true, status-free idle completion requires proof the agent process started. */
+  requireAgentStarted?: boolean
+  agentStarted?: boolean
 }
 
 export type IdleAgentTurnVerdict =
@@ -43,7 +49,13 @@ export function findMissingCommandLine(
   tail: readonly string[],
   commands: readonly string[]
 ): string | null {
-  const names = commands.map((command) => command.split(/\s+/)[0]).filter(Boolean)
+  const names = commands
+    .flatMap((command) => {
+      const first = command.trim().replace(/^['"]|['"]$/g, '').split(/\s+/)[0] ?? ''
+      const base = first.split('/').pop() ?? first
+      return [first, base]
+    })
+    .filter(Boolean)
   const recent = tail
     .map((line) => line.trim())
     .filter(Boolean)
@@ -81,6 +93,9 @@ export function judgeIdleAgentTurn(
   const missing = findMissingCommandLine(evidence.tail, evidence.readAgentCommands())
   if (missing) {
     return { kind: 'failed', missingCommandLine: missing }
+  }
+  if (evidence.requireAgentStarted && !evidence.agentStarted) {
+    return { kind: 'wait' }
   }
   // Only an agent that never reports status is believed done by an idle pane.
   return rows.length === 0 && now - sentAt >= AGENT_START_GRACE_MS

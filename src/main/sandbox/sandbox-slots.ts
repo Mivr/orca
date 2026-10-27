@@ -199,9 +199,27 @@ export function parseDockerTopExecDescendants(stdout: string): {
   }
 }
 
+const SCRIPT_INTERPRETERS = new Set(['node', 'nodejs', 'bun', 'deno', 'python', 'python3'])
+
 function commandBaseName(raw: string): string {
-  const token = raw.trim().split(/\s+/)[0] ?? ''
+  const token = raw.trim().replace(/^['"]|['"]$/g, '').split(/\s+/)[0] ?? ''
   return (token.split('/').pop() ?? token).toLowerCase()
+}
+
+function procExecutableNames(proc: { comm: string; args: string }): string[] {
+  const names = [proc.comm.toLowerCase()]
+  const tokens = proc.args.trim().split(/\s+/).filter(Boolean)
+  if (tokens[0]) {
+    const first = commandBaseName(tokens[0])
+    names.push(first)
+    if (SCRIPT_INTERPRETERS.has(first)) {
+      const scriptArg = tokens.slice(1).find((token) => !token.startsWith('-'))
+      if (scriptArg) {
+        names.push(commandBaseName(scriptArg))
+      }
+    }
+  }
+  return names
 }
 
 export function execDescendantsShowShellAlone(stdout: string): boolean {
@@ -218,6 +236,6 @@ export function execDescendantsMatchAgent(stdout: string, commands: readonly str
     if (/\bopencode\s+serve\b/.test(proc.args)) {
       return false
     }
-    return wanted.has(proc.comm.toLowerCase()) || wanted.has(commandBaseName(proc.args))
+    return procExecutableNames(proc).some((name) => wanted.has(name))
   })
 }

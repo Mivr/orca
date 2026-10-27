@@ -25,6 +25,27 @@ type AutomationRunStatusRow = AgentTurnStatusRow &
     >
   >
 
+export const DEFAULT_AGENT_START_DEADLINE_MS = 120_000
+export const ERROR_TAIL_LINE_LIMIT = 20
+
+export function agentStartDeadlineMs(): number {
+  const raw = process.env.ORCA_AGENT_START_DEADLINE_MS?.trim()
+  if (!raw) {
+    return DEFAULT_AGENT_START_DEADLINE_MS
+  }
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_AGENT_START_DEADLINE_MS
+}
+
+export function formatTerminalTailError(tail: readonly string[], fallback: string): string {
+  const trimmed = [...tail]
+  while (trimmed.length > 0 && !trimmed.at(-1)?.trim()) {
+    trimmed.pop()
+  }
+  const lastLines = trimmed.slice(-ERROR_TAIL_LINE_LIMIT).join('\n').trim()
+  return lastLines || fallback
+}
+
 export type AutomationRunAgentEvidence = {
   getAgentStatusRowsForPane(paneKey: string): readonly AutomationRunStatusRow[]
   /** The lead's full final reply for that finished turn; rows carry only a capped preview. */
@@ -33,6 +54,8 @@ export type AutomationRunAgentEvidence = {
   subscribeStatusChanges(listener: (paneKey: string) => void): () => void
   /** Executable aliases used to distinguish a launch refusal from ordinary output. */
   agentCommandsForRun(run: AutomationRun): readonly string[]
+  /** Optional liveness probe for the expected agent process in the run's PTY/sandbox. */
+  isAgentProcessRunning?: (run: AutomationRun, handle: string) => Promise<boolean>
 }
 
 export type IdleRunVerdict =
@@ -41,12 +64,29 @@ export type IdleRunVerdict =
   /** An idle shell that may not have started the agent yet. */
   | { kind: 'wait' }
 
+export function hasPostDispatchAgentStatus(
+  evidence: AutomationRunAgentEvidence,
+  run: AutomationRun,
+  runStartedAt: number
+): boolean {
+  if (!run.terminalPaneKey) {
+    return false
+  }
+  const sentAt = run.dispatchedAt ?? runStartedAt
+  return evidence
+    .getAgentStatusRowsForPane(run.terminalPaneKey)
+    .some(
+      (row) => !row.providerSessionOnly && !row.sessionBoundary && row.stateStartedAt >= sentAt
+    )
+}
+
 export function judgeIdleRun(
   evidence: AutomationRunAgentEvidence,
   run: AutomationRun,
   tail: readonly string[],
   runStartedAt: number,
-  now: number
+  now: number,
+  agentStarted = false
 ): IdleRunVerdict {
   const verdict = judgeIdleAgentTurn(
     {
@@ -54,14 +94,19 @@ export function judgeIdleRun(
       // Ignore completion evidence from before this run’s prompt.
       sentAt: run.dispatchedAt ?? runStartedAt,
       tail,
-      readAgentCommands: () => evidence.agentCommandsForRun(run)
+      readAgentCommands: () => evidence.agentCommandsForRun(run),
+      requireAgentStarted: Boolean(evidence.isAgentProcessRunning),
+      agentStarted
     },
     now
   )
   if (verdict.kind === 'failed') {
+    const summary = `Automation agent did not start; this host could not run its command (${verdict.missingCommandLine}).`
+    // Fork: the terminal's last lines usually say why (missing binary, auth prompt).
+    const tailText = formatTerminalTailError(tail, '')
     return {
       kind: 'failed',
-      error: `Automation agent did not start; this host could not run its command (${verdict.missingCommandLine}).`
+      error: tailText ? `${summary}\n${tailText}` : summary
     }
   }
   if (verdict.kind === 'completed' && verdict.interrupted) {

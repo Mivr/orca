@@ -3,7 +3,7 @@ import type { AutomationPrecheckResult } from '../history/automation-run'
 
 export const DEFAULT_AUTOMATION_PRECHECK_TIMEOUT_SECONDS = 60
 export const MAX_AUTOMATION_PRECHECK_TIMEOUT_SECONDS = 600
-export const MAX_AUTOMATION_PRECHECK_OUTPUT_CHARS = 4000
+export const MAX_AUTOMATION_PRECHECK_OUTPUT_CHARS = 4096
 
 export function normalizeAutomationPrecheckTimeoutSeconds(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {

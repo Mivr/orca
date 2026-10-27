@@ -29,6 +29,7 @@ import { automationRunSetupSkip } from './automation-run-setup-skip'
 import {
   captureMissingRunOutputSnapshot,
   confirmRunShellAloneWithSandbox,
+  isAutomationAgentProcessRunning,
   pruneSandboxAutomationWorktrees,
   releaseSandboxIfWorktreeIdle,
   sandboxRunGraceMs,
@@ -48,14 +49,18 @@ export function createRuntimeAutomationService(input: {
   const { store, runtime, claudeUsage, codexUsage } = input
   // Launch handles remain usable before pane-key lookup resolves.
   const launchedHandles = new Map<string, string>()
+  const resolveRunCommands = (run: Parameters<typeof runOwnHandle>[1]): string[] =>
+    automationAgentCommands(
+      store.listAutomations().find((entry) => entry.id === run.automationId)?.agentId,
+      store
+    )
   const observer = createRuntimeAutomationRunTerminalObserver(runtime, {
     getAgentStatusRowsForPane: (paneKey) => runtime.getAgentStatusRowsForPane(paneKey),
     getAcceptedReply: (paneKey, leadTurnKey) => runtime.getAcceptedAgentReply(paneKey, leadTurnKey),
     subscribeStatusChanges: (listener) => runtime.subscribeAgentStatusRowChanges(listener),
-    agentCommandsForRun: (run) =>
-      automationAgentCommands(
-        store.listAutomations().find((entry) => entry.id === run.automationId)?.agentId
-      )
+    agentCommandsForRun: resolveRunCommands,
+    isAgentProcessRunning: (run, handle) =>
+      isAutomationAgentProcessRunning(runtime, run, handle, resolveRunCommands(run))
   })
   let onAutomationsUpdated: (() => void) | null = null
   const service = new AutomationService(store, {
@@ -405,10 +410,22 @@ function bindSandboxRunGraceSweeps(service: AutomationService, store: Store): ()
   return noteFinalRunsAndScheduleSweep
 }
 
-function automationAgentCommands(agentId: string | undefined): string[] {
+function automationAgentCommands(
+  agentId: string | undefined,
+  store: Pick<Store, 'getSettings'>
+): string[] {
   if (!isTuiAgent(agentId)) {
     return []
   }
   const config = TUI_AGENT_CONFIG[agentId]
-  return [...getTuiAgentDetectCommands(config), config.launchCmd]
+  const override =
+    typeof store.getSettings === 'function'
+      ? store.getSettings()?.agentCmdOverrides?.[agentId]?.trim()
+      : undefined
+  return [
+    config.expectedProcess,
+    ...getTuiAgentDetectCommands(config),
+    config.launchCmd,
+    ...(override ? [override] : [])
+  ]
 }

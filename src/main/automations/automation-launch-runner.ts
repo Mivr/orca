@@ -75,7 +75,11 @@ export async function runAutomationLaunch(ctx: AutomationLaunchContext): Promise
       status: refusal ? 'skipped_unavailable' : 'dispatch_failed',
       workspaceId: automation.workspaceId,
       ...(error instanceof AutomationRunLaunchError ? error.target : {}),
-      ...(automation.surface === 'chat' ? { dispatchedAt, precheckResult } : {}),
+      ...(automation.surface === 'chat'
+        ? { dispatchedAt, precheckResult }
+        : precheckResult
+          ? { precheckResult }
+          : {}),
       ...(refusal ?? { error: describeDispatchError(error) })
     }).run
   }
@@ -112,6 +116,7 @@ export async function runAutomationLaunch(ctx: AutomationLaunchContext): Promise
     ctx.watchRun({
       ...run,
       ...launchRunTarget,
+      ...(precheckResult ? { precheckResult } : {}),
       status: 'dispatched',
       dispatchedAt,
       error: null
@@ -135,6 +140,7 @@ export async function runAutomationLaunch(ctx: AutomationLaunchContext): Promise
             runId: run.id,
             status: 'dispatch_failed',
             ...launchRunTarget,
+            ...(precheckResult ? { precheckResult } : {}),
             error: describeDispatchError(error)
           })
       )

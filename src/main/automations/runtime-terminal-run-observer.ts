@@ -10,6 +10,9 @@ import {
   type AutomationRunFailure
 } from '../../shared/automations/history/automation-run-failure-copy'
 import {
+  agentStartDeadlineMs,
+  formatTerminalTailError,
+  hasPostDispatchAgentStatus,
   judgeHeldRunTurn,
   judgeIdleRun,
   captureRunAgentTurn,
@@ -69,14 +72,23 @@ function completedSnapshot(
   return snapshot && reply?.truncated ? { ...snapshot, truncated: true } : snapshot
 }
 
+/** Fork: proof the run's agent process started, with a deadline for runs that never start one. */
+type AgentStartWatch = {
+  refreshAgentSeen: () => Promise<boolean>
+  isAgentSeen: () => boolean
+  startDeadlineAt: number
+  startDeadlineMs: number
+}
+
 async function judgeIdleTail(
   tail: readonly string[],
   judged: JudgedRun,
-  runStartedAt: number
+  runStartedAt: number,
+  agentStarted: boolean
 ): Promise<AutomationRunCompletionObservation | null> {
   const verdict: IdleRunVerdict = judged.turn()?.interrupted
     ? { kind: 'failed', ...automationRunFailure('agentInterrupted') }
-    : judgeIdleRun(judged.evidence, judged.run, tail, runStartedAt, Date.now())
+    : judgeIdleRun(judged.evidence, judged.run, tail, runStartedAt, Date.now(), agentStarted)
   return verdict.kind === 'wait' ? null : observationOf(verdict, tail, judged)
 }
 
@@ -101,17 +113,21 @@ async function settleIdlePane(
   runtime: AutomationRunTerminalHost,
   handle: string,
   judged: JudgedRun,
+  start: AgentStartWatch,
   runStartedAt: number,
   signal: AbortSignal,
   deadlineAt: number
 ): Promise<AutomationRunCompletionObservation | null> {
   const idleTail = (await readTail(runtime, handle)).join('\n')
-  while (Date.now() < deadlineAt) {
+  while (
+    Date.now() < (start.isAgentSeen() ? deadlineAt : Math.min(deadlineAt, start.startDeadlineAt))
+  ) {
     const tail = await readTail(runtime, handle)
     if (tail.join('\n') !== idleTail) {
       return null
     }
-    const observation = await judgeIdleTail(tail, judged, runStartedAt)
+    const agentStarted = await start.refreshAgentSeen()
+    const observation = await judgeIdleTail(tail, judged, runStartedAt, agentStarted)
     if (observation) {
       return observation
     }
@@ -225,12 +241,17 @@ async function buildObservation(
 async function buildUnobservedObservation(
   runtime: AutomationRunTerminalHost,
   handle: string,
-  failure: AutomationRunFailure
+  failure: AutomationRunFailure,
+  useTerminalTail = false
 ): Promise<AutomationRunCompletionObservation> {
+  const tail = await readTail(runtime, handle)
+  // Why: an agent that never started usually printed why (missing binary, auth prompt); the
+  // terminal's last lines are the actionable error. The coded copy only stands in when it is empty.
+  const tailError = useTerminalTail ? formatTerminalTailError(tail, '') : ''
   return {
     status: 'dispatch_failed',
-    outputSnapshot: await readTerminalSnapshot(runtime, handle),
-    ...failure
+    outputSnapshot: snapshotOf(tail),
+    ...(tailError ? { error: tailError } : failure)
   }
 }
 
@@ -247,9 +268,57 @@ export function createRuntimeAutomationRunTerminalObserver(
       const runStartedAt = run?.startedAt ?? run?.dispatchedAt ?? startedAt
       const judged =
         evidence && run?.terminalPaneKey ? captureRunAgentTurn(evidence, run, runStartedAt) : null
+      const startDeadlineMs = agentStartDeadlineMs()
+      const startDeadlineAt = startedAt + startDeadlineMs
+      const hasProcessProbe = Boolean(evidence?.isAgentProcessRunning && run?.terminalPaneKey)
+      let agentSeen = !hasProcessProbe
+      const refreshAgentSeen = async (): Promise<boolean> => {
+        if (agentSeen || !evidence || !run) {
+          return true
+        }
+        if (hasPostDispatchAgentStatus(evidence, run, runStartedAt)) {
+          agentSeen = true
+          return true
+        }
+        if (await evidence.isAgentProcessRunning?.(run, handle).catch(() => false)) {
+          agentSeen = true
+          return true
+        }
+        return false
+      }
+      const start: AgentStartWatch = {
+        refreshAgentSeen,
+        isAgentSeen: () => agentSeen,
+        startDeadlineAt,
+        startDeadlineMs
+      }
+      if (!agentSeen) {
+        await refreshAgentSeen()
+      }
+      const startPollTimer = !agentSeen
+        ? setInterval(() => {
+            if (agentSeen || signal.aborted || Date.now() >= startDeadlineAt) {
+              clearInterval(startPollTimer!)
+              return
+            }
+            void refreshAgentSeen()
+          }, AGENT_EVIDENCE_POLL_INTERVAL_MS)
+        : null
+      startPollTimer?.unref?.()
       try {
-        return await observeTerminalRun(runtime, handle, signal, judged, startedAt, runStartedAt)
+        return await observeTerminalRun(
+          runtime,
+          handle,
+          signal,
+          judged,
+          start,
+          startedAt,
+          runStartedAt
+        )
       } finally {
+        if (startPollTimer) {
+          clearInterval(startPollTimer)
+        }
         judged?.stop()
       }
     }
@@ -261,6 +330,7 @@ async function observeTerminalRun(
   handle: string,
   signal: AbortSignal,
   judged: JudgedRun | null,
+  start: AgentStartWatch,
   startedAt: number,
   runStartedAt: number
 ): Promise<AutomationRunCompletionObservation> {
@@ -282,11 +352,28 @@ async function observeTerminalRun(
   }
   const deadlineAt = startedAt + OBSERVE_DEADLINE_MS
   while (Date.now() < deadlineAt) {
+    if (!start.isAgentSeen() && Date.now() >= start.startDeadlineAt && !(await start.refreshAgentSeen())) {
+      return await buildUnobservedObservation(
+        runtime,
+        handle,
+        {
+          error: `Automation agent did not start within ${Math.round(start.startDeadlineMs / 1000)}s of launch.`
+        },
+        true
+      )
+    }
+    // Re-arm often enough to settle a held `done` (#34064) and to enforce the start deadline.
+    const waitTimeouts = [
+      ...(judged ? [HELD_DONE_SETTLE_MS] : []),
+      ...(!start.isAgentSeen()
+        ? [Math.max(AGENT_START_PROBE_TIMEOUT_MS, start.startDeadlineAt - Date.now())]
+        : [])
+    ]
     try {
       const wait = await runtime.waitForTerminal(handle, {
         condition: 'tui-idle',
         signal,
-        ...(judged ? { timeoutMs: HELD_DONE_SETTLE_MS } : {})
+        ...(waitTimeouts.length > 0 ? { timeoutMs: Math.min(...waitTimeouts) } : {})
       })
       if (!judged || !wait.satisfied) {
         return await buildObservation(runtime, handle, wait)
@@ -295,6 +382,7 @@ async function observeTerminalRun(
         runtime,
         handle,
         judged,
+        start,
         runStartedAt,
         signal,
         deadlineAt

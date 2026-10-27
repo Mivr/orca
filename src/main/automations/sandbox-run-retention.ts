@@ -6,7 +6,11 @@ import {
 import { automationRunRecency } from '../../shared/automation-session-reuse'
 import type { WorktreeMeta } from '../../shared/worktree/meta-types'
 import { isSandboxRoutingEnabled } from '../sandbox/sandbox-config'
-import { isSandboxWorktreeShellAlone, removeSandboxForWorktree } from '../sandbox/sandbox-manager'
+import {
+  isSandboxWorktreeAgentRunning,
+  isSandboxWorktreeShellAlone,
+  removeSandboxForWorktree
+} from '../sandbox/sandbox-manager'
 import { createHeadlessAutomationOutputSnapshotBuffer } from './headless-dispatch'
 
 export const SANDBOX_RUN_GRACE_MS_ENV = 'ORCA_SANDBOX_RUN_GRACE_MS'
@@ -55,6 +59,9 @@ export type SandboxRetentionRuntimeLike = {
     selector: string,
     options?: { force?: boolean; waitForBackgroundRemoval?: boolean }
   ) => Promise<unknown>
+  inspectTerminalProcess?: (
+    handle: string
+  ) => Promise<{ foregroundProcess?: string | null }>
 }
 
 export type SandboxRetentionStoreLike = {
@@ -105,6 +112,38 @@ export async function releaseSandboxIfWorktreeIdle(
   }
   if (await hasNoLiveWorktreeTerminals(runtime, worktreeId)) {
     await removeSandboxForWorktree(worktreeId)
+  }
+}
+
+export async function isAutomationAgentProcessRunning(
+  runtime: SandboxRetentionRuntimeLike,
+  run: AutomationRun,
+  handle: string,
+  commands: readonly string[]
+): Promise<boolean> {
+  if (commands.length === 0) {
+    return false
+  }
+  if (isSandboxRoutingEnabled() && run.workspaceId) {
+    return isSandboxWorktreeAgentRunning(run.workspaceId, commands)
+  }
+  if (typeof runtime.inspectTerminalProcess !== 'function') {
+    return false
+  }
+  try {
+    const inspection = await runtime.inspectTerminalProcess(handle)
+    const fg = inspection.foregroundProcess?.trim().toLowerCase()
+    if (!fg) {
+      return false
+    }
+    const fgBase = fg.split('/').pop() ?? fg
+    return commands.some((cmd) => {
+      const token = cmd.trim().replace(/^['"]|['"]$/g, '').split(/\s+/)[0] ?? ''
+      const base = (token.split('/').pop() ?? token).toLowerCase()
+      return Boolean(base) && (fg === base || fgBase === base)
+    })
+  } catch {
+    return false
   }
 }
 
