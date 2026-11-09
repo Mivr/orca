@@ -8,7 +8,7 @@
  * rewrites the shell into `docker exec`. Rejections throw
  * `sandbox_slots_full` so UI/CLI can show retry guidance.
  */
-import { recognizeAgentProcessFromCommandLine } from '../../shared/agent-process-recognition'
+import { recognizeAgentProcessFromCommandLine } from '../../shared/agent-status/process/agent-process-recognition'
 import { splitWorktreeId } from '../../shared/worktree/id'
 import { isSandboxRoutingEnabled } from './sandbox-config'
 import { stampSandboxSpawnEnv } from './sandbox-manager'

@@ -292,7 +292,9 @@ describe('orcad external-chromium agent-browser environment', () => {
         '/state'
       )
       await expect(session.start()).resolves.toBe('tab-live')
-      const verbs = commands().map((args) => args.filter((arg) => !arg.startsWith('-')))
+      const verbs = runProcessMock.mock.calls
+        .map(([spec]) => commandOf(spec))
+        .map((args) => args.filter((arg) => !arg.startsWith('-')))
       expect(verbs.some((args) => args.includes('eval'))).toBe(false)
       expect(verbs.some((args) => args.includes('close'))).toBe(false)
       expect(verbs.some((args) => args.includes('open'))).toBe(false)

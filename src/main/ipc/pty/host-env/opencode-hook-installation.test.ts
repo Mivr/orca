@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildPtyHostEnv } from './assembly'
@@ -92,6 +92,9 @@ describe('OpenCode installation uses the current enabled agents', () => {
     expect(readFileSync(join(custom, 'plugins', 'user.js'), 'utf8')).toBe('// user plugin')
   })
 })
+
+// Fork: upstream dropped its shared `plugin` helper with the tests that used it.
+const plugin = (dir: string, agent: string) => join(dir, 'plugins', `orca-${agent}-status.js`)
 
 it.skipIf(process.platform !== 'linux')(
   'installs a mounted sandbox-default overlay when ORCA_SANDBOX_AGENTS=1 and no user OPENCODE_CONFIG_DIR is set',

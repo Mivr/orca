@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { TerminalHost } from './terminal-host'
-import type { SubprocessHandle } from './session-subprocess-handle'
+import type { SubprocessHandle } from '../sessions/session-subprocess-handle'
 
 function mockSubprocess(pid: number): SubprocessHandle & { write: ReturnType<typeof vi.fn> } {
   return {

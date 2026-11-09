@@ -1,5 +1,5 @@
 import { basename } from 'node:path'
-import { isSandboxRoutingEnabled, sandboxInnerShell } from '../sandbox/sandbox-config'
+import { isSandboxRoutingEnabled, sandboxInnerShell } from '../../../sandbox/sandbox-config'
 
 /** Match local spawn shell precedence: request → default setting → SHELL.
  * Remote relays and Windows shell families cannot be named by this POSIX lookup. */
@@ -35,7 +35,11 @@ export function launchHostProvesAgentInFront(args: {
 }): boolean {
   const effectiveHost = args.hostPlatform ?? process.platform
   // Host PTY foreground reads see `docker exec`, not the container agent; keep prompts on the startup line/script.
-  if (!args.isRemote && effectiveHost === 'linux' && (args.env ?? process.env).ORCA_SANDBOX_AGENTS === '1') {
+  if (
+    !args.isRemote &&
+    effectiveHost === 'linux' &&
+    (args.env ?? process.env).ORCA_SANDBOX_AGENTS === '1'
+  ) {
     return false
   }
   return args.isRemote ? args.launchPlatform !== 'win32' : effectiveHost !== 'win32'

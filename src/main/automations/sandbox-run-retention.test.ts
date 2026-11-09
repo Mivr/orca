@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AutomationRun, AutomationRunStatus } from '../../shared/automations-types'
+import type {
+  AutomationRun,
+  AutomationRunStatus
+} from '../../shared/automations/history/automation-run'
 import type { WorktreeMeta } from '../../shared/worktree/meta-types'
 import {
   ensureSandboxForWorktree,
@@ -11,13 +14,21 @@ import {
   sandboxContainerName,
   setSandboxDockerRunner
 } from '../sandbox/sandbox-manager'
-import { launchHeadlessAutomationAgent } from './headless-automation-agent-launch'
-import { AutomationDispatchRefusedError } from './headless-dispatch-runner'
+import { launchAutomationTerminalAgent } from './automation-terminal-launch'
+import { AutomationDispatchRefusedError } from './automation-launch-runner'
 import { createRuntimeAutomationService } from './runtime-automation-service'
 import { DEFAULT_SANDBOX_RUN_GRACE_MS } from './sandbox-run-retention'
 
 vi.mock('./service', () => ({
   AutomationService: class {
+    // Upstream builds run-terminal retention inside the service from this factory option.
+    runTerminalRetention: unknown
+    constructor(
+      _store: unknown,
+      opts: { runTerminalRetention?: (owner: unknown) => unknown } = {}
+    ) {
+      this.runTerminalRetention = opts.runTerminalRetention?.(this) ?? null
+    }
     start = vi.fn()
     stop = vi.fn()
     markDispatchResult = vi.fn(async () => ({}))
@@ -150,6 +161,7 @@ describe('sandbox automation retention & slot reserve (R2 + R4)', () => {
         return runs.find((entry) => entry.terminalPaneKey === paneKey)?.terminalPtyId ?? null
       }),
       readTerminalClientUse: vi.fn(() => 'unused' as const),
+      getWorkspaceSessionForWorktree: vi.fn(() => undefined),
       readTerminal: vi.fn(async (handle: string) => ({ tail: [`snapshot for ${handle}`] })),
       listTerminals: vi.fn(async (selector?: string) => {
         const wtId = selector?.replace(/^id:/, '')
@@ -198,7 +210,7 @@ describe('sandbox automation retention & slot reserve (R2 + R4)', () => {
       store: store as never,
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: test mock satisfies retention members.
       runtime: runtime as never,
-      headless: true
+      allowRemoteHostScheduling: true
     })
     vi.mocked(service.markDispatchResult).mockImplementation(async (result) => {
       const target = runs.find((entry) => entry.id === result.runId)
@@ -257,7 +269,7 @@ describe('sandbox automation retention & slot reserve (R2 + R4)', () => {
       createManagedWorktree
     }
     await expect(
-      launchHeadlessAutomationAgent(
+      launchAutomationTerminalAgent(
         // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: pre-worktree slot check runs before runtime methods.
         runtime as never,
         {

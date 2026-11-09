@@ -2,8 +2,8 @@ import {
   isFinalAutomationRunStatus,
   type AutomationRun,
   type AutomationRunOutputSnapshot
-} from '../../shared/automations-types'
-import { automationRunRecency } from '../../shared/automation-session-reuse'
+} from '../../shared/automations/history/automation-run'
+import { automationRunRecency } from '../../shared/automations/history/automation-session-reuse'
 import type { WorktreeMeta } from '../../shared/worktree/meta-types'
 import { isSandboxRoutingEnabled } from '../sandbox/sandbox-config'
 import {
@@ -11,7 +11,7 @@ import {
   isSandboxWorktreeShellAlone,
   removeSandboxForWorktree
 } from '../sandbox/sandbox-manager'
-import { createHeadlessAutomationOutputSnapshotBuffer } from './headless-dispatch'
+import { createAutomationOutputSnapshotBuffer } from './automation-launch'
 
 export const SANDBOX_RUN_GRACE_MS_ENV = 'ORCA_SANDBOX_RUN_GRACE_MS'
 export const DEFAULT_SANDBOX_RUN_GRACE_MS = 2 * 60_000
@@ -59,9 +59,7 @@ export type SandboxRetentionRuntimeLike = {
     selector: string,
     options?: { force?: boolean; waitForBackgroundRemoval?: boolean }
   ) => Promise<unknown>
-  inspectTerminalProcess?: (
-    handle: string
-  ) => Promise<{ foregroundProcess?: string | null }>
+  inspectTerminalProcess?: (handle: string) => Promise<{ foregroundProcess?: string | null }>
 }
 
 export type SandboxRetentionStoreLike = {
@@ -78,7 +76,7 @@ export async function captureMissingRunOutputSnapshot(
   }
   try {
     const read = await runtime.readTerminal(handle, { limit: SNAPSHOT_TAIL_LIMIT })
-    const buffer = createHeadlessAutomationOutputSnapshotBuffer()
+    const buffer = createAutomationOutputSnapshotBuffer()
     buffer.append(read.tail.join('\n'))
     return buffer.snapshot() ?? undefined
   } catch {
@@ -138,7 +136,11 @@ export async function isAutomationAgentProcessRunning(
     }
     const fgBase = fg.split('/').pop() ?? fg
     return commands.some((cmd) => {
-      const token = cmd.trim().replace(/^['"]|['"]$/g, '').split(/\s+/)[0] ?? ''
+      const token =
+        cmd
+          .trim()
+          .replace(/^['"]|['"]$/g, '')
+          .split(/\s+/)[0] ?? ''
       const base = (token.split('/').pop() ?? token).toLowerCase()
       return Boolean(base) && (fg === base || fgBase === base)
     })
@@ -188,7 +190,12 @@ export async function pruneSandboxAutomationWorktrees(args: {
   for (let index = 0; index < owned.length; index += 1) {
     const entry = owned[index]
     const { run, worktreeId } = entry
-    if (run && (!isFinalAutomationRunStatus(run.status) || run.terminalPtyId !== null || args.runTerminalAlive(run))) {
+    if (
+      run &&
+      (!isFinalAutomationRunStatus(run.status) ||
+        run.terminalPtyId !== null ||
+        args.runTerminalAlive(run))
+    ) {
       continue
     }
     if (!(await hasNoLiveWorktreeTerminals(args.runtime, worktreeId))) {

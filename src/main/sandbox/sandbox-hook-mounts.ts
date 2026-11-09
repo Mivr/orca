@@ -9,7 +9,7 @@
  */
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { getOrcaManagedCodexHomePath } from '../codex/codex-home-paths'
+import { getOrcaManagedCodexHomePath } from '../codex/configuration/homes/codex-home-paths'
 import { resolveUserDataPath } from '../orcad/orcad-app-paths'
 import { SANDBOX_AUTH_MOUNT_KEYS, SANDBOX_HOME, type SandboxAuthMountKey } from './sandbox-config'
 

@@ -1,16 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Automation } from '../../shared/automations/automation-definition'
 import type {
-  Automation,
   AutomationPrecheckResult,
   AutomationRun
-} from '../../shared/automations-types'
-import { MAX_AUTOMATION_PRECHECK_OUTPUT_CHARS } from '../../shared/automation-precheck'
+} from '../../shared/automations/history/automation-run'
+import { MAX_AUTOMATION_PRECHECK_OUTPUT_CHARS } from '../../shared/automations/launch/automation-precheck'
 import { execDescendantsMatchAgent } from '../sandbox/sandbox-slots'
 import { DEFAULT_AGENT_START_DEADLINE_MS } from './automation-run-agent-evidence'
-import {
-  AutomationDispatchRefusedError,
-  runHeadlessAutomationDispatch
-} from './headless-dispatch-runner'
+import { AutomationDispatchRefusedError, runAutomationLaunch } from './automation-launch-runner'
 import { runAutomationPrecheck } from './precheck-runner'
 import {
   createRuntimeAutomationRunTerminalObserver,
@@ -23,6 +20,7 @@ const PANE_KEY = 'tab-r3:1'
 function makeHost(options: { idle: boolean; tail: string[] }): AutomationRunTerminalHost {
   return {
     getTerminalHandleForPaneKey: () => HANDLE,
+    canOpenRunTerminals: () => true,
     readTerminal: async () => ({ tail: options.tail }),
     waitForTerminal: (_handle, waitOpts) => {
       if (options.idle) {
@@ -72,6 +70,8 @@ describe('agent fast start failure & precheck output retention (R3 + R5)', () =>
       makeHost({ idle: true, tail: lines }),
       {
         getAgentStatusRowsForPane: () => [],
+        getAcceptedReply: () => undefined,
+        subscribeStatusChanges: () => () => {},
         agentCommandsForRun: () => ['claude', '/nonexistent/missing-claude'],
         isAgentProcessRunning: async () => false
       }
@@ -98,6 +98,8 @@ describe('agent fast start failure & precheck output retention (R3 + R5)', () =>
       const lines = Array.from({ length: 24 }, (_, idx) => `boot-${idx + 1}`)
       const observer = createRuntimeAutomationRunTerminalObserver(makeHost({ idle, tail: lines }), {
         getAgentStatusRowsForPane: () => [],
+        getAcceptedReply: () => undefined,
+        subscribeStatusChanges: () => () => {},
         agentCommandsForRun: () => ['claude'],
         isAgentProcessRunning: async () => false
       })
@@ -152,7 +154,7 @@ describe('agent fast start failure & precheck output retention (R3 + R5)', () =>
       stderrTruncated: false
     }
     const updates: unknown[] = []
-    await runHeadlessAutomationDispatch({
+    await runAutomationLaunch({
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: minimal automation fixture.
       automation: {
         id: 'a1',
@@ -166,13 +168,13 @@ describe('agent fast start failure & precheck output retention (R3 + R5)', () =>
       dispatcher: async () => {
         throw new AutomationDispatchRefusedError({ error: 'no free sandbox slot' })
       },
-      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: refused dispatch uses only updateRun.
-      runs: {
-        updateRun: async (payload: unknown) => {
-          updates.push(payload)
-          return payload as AutomationRun
-        }
-      } as never,
+      // Upstream routes every dispatch-owned write through transition(); a refusal writes once.
+      transition: (result) => {
+        const payload = { runId: 'run-refused', ...result }
+        updates.push(payload)
+        // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: refusal test reads only the recorded payload.
+        return { applied: true, run: Promise.resolve(payload as unknown as AutomationRun) }
+      },
       runPrecheck: async () => passingPrecheck,
       // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: unused in refusal test.
       markDispatchResult: async (res) => res as unknown as AutomationRun,

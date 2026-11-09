@@ -1,13 +1,13 @@
-import { terminalStartError } from ../../../shared/terminal/pty/lifecycle/terminal-start-failure
-import type { PtyCreationDisposition } from ../../../shared/terminal/pty/lifecycle/pty-creation-disposition
-import type { SubprocessHandle } from ../sessions/session-subprocess-handle
-import type { WslGuestRoot } from ../../../shared/wsl-guest-root-marker
-import { buildStartupCommandSubmission } from ../../../shared/startup-command-submission
-import type { StartupCommandStaging } from ../../../shared/startup-command-staging
-import { stageSessionStartupCommand } from ./terminal-host-startup-staging
-import { resolvePtyOwnerBackend } from ../../../shared/terminal/pty/lifecycle/pty-owner-backend
-import { getDaemonSessionResultMetadata } from ../protocol/daemon-create-or-attach-result
-import { Session } from ../sessions/session
+import { terminalStartError } from '../../../shared/terminal/pty/lifecycle/terminal-start-failure'
+import type { PtyCreationDisposition } from '../../../shared/terminal/pty/lifecycle/pty-creation-disposition'
+import type { SubprocessHandle } from '../sessions/session-subprocess-handle'
+import type { WslGuestRoot } from '../../../shared/wsl-guest-root-marker'
+import { buildStartupCommandSubmission } from '../../../shared/startup-command-submission'
+import type { StartupCommandStaging } from '../../../shared/startup-command-staging'
+import { stageSessionStartupCommand } from './terminal-host-startup-staging'
+import { resolvePtyOwnerBackend } from '../../../shared/terminal/pty/lifecycle/pty-owner-backend'
+import { getDaemonSessionResultMetadata } from '../protocol/daemon-create-or-attach-result'
+import { Session } from '../sessions/session'
 import {
   observeReturnedTerminalProcess,
   recoverUnpublishedTerminalSession,
