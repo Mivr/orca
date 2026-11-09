@@ -75,9 +75,7 @@ export function hasPostDispatchAgentStatus(
   const sentAt = run.dispatchedAt ?? runStartedAt
   return evidence
     .getAgentStatusRowsForPane(run.terminalPaneKey)
-    .some(
-      (row) => !row.providerSessionOnly && !row.sessionBoundary && row.stateStartedAt >= sentAt
-    )
+    .some((row) => !row.providerSessionOnly && !row.sessionBoundary && row.stateStartedAt >= sentAt)
 }
 
 export function judgeIdleRun(

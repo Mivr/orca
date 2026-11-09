@@ -352,7 +352,11 @@ async function observeTerminalRun(
   }
   const deadlineAt = startedAt + OBSERVE_DEADLINE_MS
   while (Date.now() < deadlineAt) {
-    if (!start.isAgentSeen() && Date.now() >= start.startDeadlineAt && !(await start.refreshAgentSeen())) {
+    if (
+      !start.isAgentSeen() &&
+      Date.now() >= start.startDeadlineAt &&
+      !(await start.refreshAgentSeen())
+    ) {
       return await buildUnobservedObservation(
         runtime,
         handle,

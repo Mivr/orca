@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildSandboxExecRewrite, rewritePtySpawnForSandbox } from './sandbox-exec-rewrite'
-import {
-  SANDBOX_CONTAINER_ENV,
-  SANDBOX_LAUNCH_STAGING_ENV
-} from '../../sandbox/sandbox-config'
+import { SANDBOX_CONTAINER_ENV, SANDBOX_LAUNCH_STAGING_ENV } from '../../sandbox/sandbox-config'
 
 describe('sandbox-exec-rewrite', () => {
   it('rewrites the shell into docker exec with the same-path cwd', () => {

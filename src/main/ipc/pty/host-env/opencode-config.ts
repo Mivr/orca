@@ -13,7 +13,10 @@ import {
   type OpenCodeHookService
 } from '../../../opencode/hook-service'
 import { writeOpenCodePluginConfig } from '../../../opencode/opencode-plugin-config-writer'
-import { OPENCODE_OVERLAY_DIR, ORCA_OPENCODE_PLUGIN_FILE } from '../../../opencode/overlay-dir-names'
+import {
+  OPENCODE_OVERLAY_DIR,
+  ORCA_OPENCODE_PLUGIN_FILE
+} from '../../../opencode/overlay-dir-names'
 import { isSafeDescendCandidate } from '../../../pty/scrollback/overlay-mirror'
 import { resolveOpenCodeSourceConfigDir } from './pi-agent'
 import { restoreOrStripOverlayEnv } from '../../../../shared/agent-launch/startup/agent-overlay-env'
@@ -44,7 +47,8 @@ function ensureSandboxOpenCodeOverlayDir(
     writeOpenCodePluginConfig({
       configDir: sandboxDir,
       ownership: 'overlay',
-      pluginFileName: agent === 'opencode2' ? 'orca-opencode2-status.js' : ORCA_OPENCODE_PLUGIN_FILE,
+      pluginFileName:
+        agent === 'opencode2' ? 'orca-opencode2-status.js' : ORCA_OPENCODE_PLUGIN_FILE,
       getSource: agent === 'opencode2' ? getOpenCode2PluginSource : getOpenCodePluginSource,
       installsTuiPlugin: true,
       tuiOnlyDirectory: undefined

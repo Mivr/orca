@@ -8,10 +8,7 @@
  */
 import { runProcess } from '@orca/process-host'
 import { cleanupSandboxEnvFile, writeSandboxEnvFile } from './sandbox-env-file'
-import {
-  resolveSandboxHookMountDirs,
-  resolveSandboxLaunchStagingDir
-} from './sandbox-hook-mounts'
+import { resolveSandboxHookMountDirs, resolveSandboxLaunchStagingDir } from './sandbox-hook-mounts'
 import { buildSandboxDockerRunArgs } from './sandbox-run-args'
 import {
   resetBindMountsForTest,

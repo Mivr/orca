@@ -51,7 +51,11 @@ export function findMissingCommandLine(
 ): string | null {
   const names = commands
     .flatMap((command) => {
-      const first = command.trim().replace(/^['"]|['"]$/g, '').split(/\s+/)[0] ?? ''
+      const first =
+        command
+          .trim()
+          .replace(/^['"]|['"]$/g, '')
+          .split(/\s+/)[0] ?? ''
       const base = first.split('/').pop() ?? first
       return [first, base]
     })

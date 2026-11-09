@@ -61,9 +61,7 @@ export function releaseAutomationReservation(reservation: SandboxAutomationReser
   pendingReservations.delete(reservation)
 }
 
-export function countPendingAutomationReservations(
-  exclude?: SandboxAutomationReservation
-): number {
+export function countPendingAutomationReservations(exclude?: SandboxAutomationReservation): number {
   let count = 0
   for (const reservation of pendingReservations) {
     if (reservation !== exclude && !reservation.materialized) {
@@ -202,7 +200,11 @@ export function parseDockerTopExecDescendants(stdout: string): {
 const SCRIPT_INTERPRETERS = new Set(['node', 'nodejs', 'bun', 'deno', 'python', 'python3'])
 
 function commandBaseName(raw: string): string {
-  const token = raw.trim().replace(/^['"]|['"]$/g, '').split(/\s+/)[0] ?? ''
+  const token =
+    raw
+      .trim()
+      .replace(/^['"]|['"]$/g, '')
+      .split(/\s+/)[0] ?? ''
   return (token.split('/').pop() ?? token).toLowerCase()
 }
 

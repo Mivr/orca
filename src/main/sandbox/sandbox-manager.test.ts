@@ -148,7 +148,10 @@ describe('ensureSandboxForWorktree', () => {
     calls = []
     const optOutPath = join(dir, 'wt-hosts-optout')
     mkdirSync(optOutPath, { recursive: true })
-    await ensureSandboxForWorktree({ worktreeId: 'repo::/wt-hosts-optout', worktreePath: optOutPath })
+    await ensureSandboxForWorktree({
+      worktreeId: 'repo::/wt-hosts-optout',
+      worktreePath: optOutPath
+    })
     const optOutArgs = calls.find((call) => call.args[0] === 'run')?.args ?? []
     expect(optOutArgs).not.toContain('--add-host')
   })

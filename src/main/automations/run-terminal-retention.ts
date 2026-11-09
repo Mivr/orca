@@ -34,10 +34,7 @@ export type RunTerminalRetentionDeps = {
   /** Stop and remove the sandbox container once the run's terminal is closed/slept. */
   releaseRunSandbox?: (run: AutomationRun) => Promise<void>
   /** Prune older sleeping automationCreated worktrees past the per-automation cap. */
-  pruneAutomationWorktrees?: (
-    automationId: string,
-    runs: readonly AutomationRun[]
-  ) => Promise<void>
+  pruneAutomationWorktrees?: (automationId: string, runs: readonly AutomationRun[]) => Promise<void>
   /** Serialize retention with dispatch to protect reused panes. */
   inAutomationLane: <T>(automationId: string, operation: () => Promise<T>) => Promise<T>
   policy?: () => RetentionSweepPolicy
@@ -108,9 +105,7 @@ export function createRunTerminalRetention(deps: RunTerminalRetentionDeps): RunT
     let releasedCount = 0
     let kept = 0
     const ownedPaneKeys = new Set<string>()
-    const allAutomationRuns = deps
-      .listRuns()
-      .filter((run) => run.automationId === automationId)
+    const allAutomationRuns = deps.listRuns().filter((run) => run.automationId === automationId)
     const runs = allAutomationRuns
       .filter(
         (run): run is PanedRun =>

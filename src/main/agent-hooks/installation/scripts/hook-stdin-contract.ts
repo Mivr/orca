@@ -115,7 +115,9 @@ const POSIX_HOOK_SPOOL_TOOL_EVENTS = [
   'AfterFileEdit'
 ] as const
 
-const POSIX_HOOK_SPOOL_EVENT_VAR_PATTERN = [...POSIX_HOOK_SPOOL_TOOL_EVENTS, 'PostToolBatch'].join('|')
+const POSIX_HOOK_SPOOL_EVENT_VAR_PATTERN = [...POSIX_HOOK_SPOOL_TOOL_EVENTS, 'PostToolBatch'].join(
+  '|'
+)
 // PostToolBatch (upstream) is matched only as the hook_event_name value, compact or spaced.
 const POSIX_HOOK_SPOOL_PAYLOAD_PATTERN = [
   ...POSIX_HOOK_SPOOL_TOOL_EVENTS.map((eventName) => `*'"${eventName}"'*`),
