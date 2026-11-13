@@ -344,4 +344,47 @@ describe('resolveSandboxAuthMounts', () => {
     })
     expect(missing).toEqual([])
   })
+
+  it('mounts the claude profiles root and default home same-path :rw, skipping a missing home', async () => {
+    const home = join(dir, 'claudehome')
+    const claudeHomeDir = join(home, '.claude')
+    const claudeProfilesDir = join(dir, 'userdata', 'claude-profiles')
+    mkdirSync(claudeHomeDir, { recursive: true })
+    mkdirSync(claudeProfilesDir, { recursive: true })
+    const hookDirs = {
+      scriptsDir: join(dir, 'nope-scripts'),
+      geminiConfigDir: join(dir, 'nope-gemini'),
+      endpointDir: join(dir, 'nope-endpoint'),
+      spoolDir: join(dir, 'nope-spool'),
+      codexRuntimeHome: join(dir, 'nope-codex'),
+      opencodeOverlaysDir: join(dir, 'nope-overlays'),
+      opencodeSharedDir: join(dir, 'nope-shared'),
+      claudeProfilesDir,
+      claudeHomeDir
+    }
+    const env = { ORCA_SANDBOX_AUTH_MOUNTS: 'claude,claude-profiles,claude-home-abs' }
+    const mounts = await resolveSandboxAuthMounts(noInspect, { orcadHome: home, env, hookDirs })
+    expect(mounts).toEqual([
+      `${claudeHomeDir}:/var/tmp/.claude:rw`,
+      `${claudeProfilesDir}:${claudeProfilesDir}:rw`,
+      `${claudeHomeDir}:${claudeHomeDir}:rw`
+    ])
+    // Opt-out drops both new mounts and keeps the /var/tmp login mount.
+    const optOut = await resolveSandboxAuthMounts(noInspect, {
+      orcadHome: home,
+      env: { ORCA_SANDBOX_AUTH_MOUNTS: 'claude' },
+      hookDirs
+    })
+    expect(optOut).toEqual([`${claudeHomeDir}:/var/tmp/.claude:rw`])
+    // Missing default home → claude-home-abs skipped, profiles root still mounted.
+    const missingHome = await resolveSandboxAuthMounts(noInspect, {
+      orcadHome: home,
+      env,
+      hookDirs: { ...hookDirs, claudeHomeDir: join(dir, 'no-such-home', '.claude') }
+    })
+    expect(missingHome).toEqual([
+      `${claudeHomeDir}:/var/tmp/.claude:rw`,
+      `${claudeProfilesDir}:${claudeProfilesDir}:rw`
+    ])
+  })
 })

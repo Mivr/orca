@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   SANDBOX_HOOK_MOUNT_KEYS,
+  resolveSandboxClaudeProfilesDir,
   resolveSandboxHookMountDirs,
   sandboxHookMountSpecs
 } from './sandbox-hook-mounts'
@@ -29,7 +30,9 @@ describe('sandbox-hook-mounts', () => {
       'codex-runtime-home',
       'opencode-overlays',
       'opencode-shared',
-      'launch-staging'
+      'launch-staging',
+      'claude-profiles',
+      'claude-home-abs'
     ])
   })
 
@@ -46,7 +49,9 @@ describe('sandbox-hook-mounts', () => {
       codexRuntimeHome: codexHome,
       opencodeOverlaysDir: join(userData, 'opencode-config-overlays'),
       opencodeSharedDir: join(userData, 'opencode-hooks', 'shared'),
-      launchStagingDir: join(userData, 'launch-staging')
+      launchStagingDir: join(userData, 'launch-staging'),
+      claudeProfilesDir: join(userData, 'claude-profiles'),
+      claudeHomeDir: join(home, '.claude')
     })
     // Ensured even with no prior spawn: the mount gate must see them.
     expect(existsSync(join(userData, 'agent-hooks', 'spool'))).toBe(true)
@@ -54,6 +59,35 @@ describe('sandbox-hook-mounts', () => {
     expect(existsSync(join(userData, 'opencode-config-overlays'))).toBe(true)
     expect(existsSync(join(userData, 'opencode-hooks', 'shared'))).toBe(true)
     expect(existsSync(join(userData, 'opencode-hooks', 'shared', 'plugins'))).toBe(true)
+    // Profiles root exists at create time (0700) so accounts added later resolve.
+    expect(statSync(join(userData, 'claude-profiles')).isDirectory()).toBe(true)
+    expect(statSync(join(userData, 'claude-profiles')).mode & 0o777).toBe(0o700)
+  })
+
+  it('mounts the profiles root and the default home same-path :rw', () => {
+    const home = join(dir, 'h')
+    const userData = join(dir, 'u')
+    const hookDirs = resolveSandboxHookMountDirs(home, userData, join(dir, 'c'))
+    expect(resolveSandboxClaudeProfilesDir(userData)).toBe(join(userData, 'claude-profiles'))
+    const byKey = new Map(sandboxHookMountSpecs(hookDirs).map((spec) => [spec.key, spec]))
+    expect(byKey.get('claude-profiles')).toEqual({
+      key: 'claude-profiles',
+      hostPath: join(userData, 'claude-profiles'),
+      containerPath: join(userData, 'claude-profiles'),
+      kind: 'dir',
+      mode: 'rw'
+    })
+    expect(byKey.get('claude-home-abs')).toEqual({
+      key: 'claude-home-abs',
+      hostPath: join(home, '.claude'),
+      containerPath: join(home, '.claude'),
+      kind: 'dir',
+      mode: 'rw'
+    })
+    // Without the optional dirs the specs are omitted (fail closed).
+    const bare = sandboxHookMountSpecs({ ...hookDirs, claudeProfilesDir: undefined, claudeHomeDir: undefined })
+    expect(bare.map((spec) => spec.key)).not.toContain('claude-profiles')
+    expect(bare.map((spec) => spec.key)).not.toContain('claude-home-abs')
   })
 
   it('renders scripts :ro twice, endpoint :ro, spool/homes :rw', () => {

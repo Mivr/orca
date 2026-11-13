@@ -6,6 +6,9 @@ import {
   SANDBOX_MEMORY,
   SANDBOX_SLOTS_FULL,
   isSandboxRoutingEnabled,
+  SANDBOX_CLAUDE_PROFILES_DIR_ENV,
+  hasInjectedClaudeConfigDir,
+  pickSandboxClaudeConfigEnv,
   pickSandboxEnv,
   pickSandboxHookSpawnEnv,
   sandboxAuthMounts,
@@ -192,7 +195,9 @@ describe('sandbox-config', () => {
       'codex-runtime-home',
       'opencode-overlays',
       'opencode-shared',
-      'launch-staging'
+      'launch-staging',
+      'claude-profiles',
+      'claude-home-abs'
     ])
     expect(sandboxAuthMounts({ ORCA_SANDBOX_AUTH_MOUNTS: 'ssh,gh' })).toEqual(['ssh', 'gh'])
     expect(sandboxAuthMounts({ ORCA_SANDBOX_AUTH_MOUNTS: '' })).toEqual([])
@@ -201,5 +206,79 @@ describe('sandbox-config', () => {
       'codex',
       'opencode'
     ])
+  })
+
+  it('lets ORCA_SANDBOX_AUTH_MOUNTS opt out of the claude routing mounts', () => {
+    expect(sandboxAuthMounts({ ORCA_SANDBOX_AUTH_MOUNTS: 'claude,codex' })).toEqual([
+      'claude',
+      'codex'
+    ])
+    expect(
+      sandboxAuthMounts({ ORCA_SANDBOX_AUTH_MOUNTS: 'claude-profiles,claude-home-abs' })
+    ).toEqual(['claude-profiles', 'claude-home-abs'])
+  })
+})
+
+describe('pickSandboxClaudeConfigEnv', () => {
+  const root = '/home/mihail/.orca-orcad-data/claude-profiles'
+  const home = `${root}/acct1/home`
+  const valid = {
+    [SANDBOX_CLAUDE_PROFILES_DIR_ENV]: root,
+    CLAUDE_CONFIG_DIR: home,
+    ORCA_CLAUDE_INJECTED_CONFIG_DIR: home
+  }
+
+  it('forwards both vars for an injected dir inside the stamped root', () => {
+    expect(pickSandboxClaudeConfigEnv(valid)).toEqual({
+      CLAUDE_CONFIG_DIR: home,
+      ORCA_CLAUDE_INJECTED_CONFIG_DIR: home
+    })
+    expect(pickSandboxClaudeConfigEnv({ ...valid, [SANDBOX_CLAUDE_PROFILES_DIR_ENV]: `${root}/` }))
+      .toEqual({ CLAUDE_CONFIG_DIR: home, ORCA_CLAUDE_INJECTED_CONFIG_DIR: home })
+  })
+
+  it('drops both when the capability stamp is missing or empty', () => {
+    const { [SANDBOX_CLAUDE_PROFILES_DIR_ENV]: _stamp, ...noStamp } = valid
+    expect(pickSandboxClaudeConfigEnv(noStamp)).toEqual({})
+    expect(pickSandboxClaudeConfigEnv({ ...valid, [SANDBOX_CLAUDE_PROFILES_DIR_ENV]: '' })).toEqual(
+      {}
+    )
+  })
+
+  it('drops both when the vars are unset or differ (orcad-owned CLAUDE_CONFIG_DIR)', () => {
+    expect(pickSandboxClaudeConfigEnv({ ...valid, ORCA_CLAUDE_INJECTED_CONFIG_DIR: '' })).toEqual(
+      {}
+    )
+    const { ORCA_CLAUDE_INJECTED_CONFIG_DIR: _injected, ...onlyConfig } = valid
+    expect(pickSandboxClaudeConfigEnv(onlyConfig)).toEqual({})
+    const { CLAUDE_CONFIG_DIR: _config, ...onlyInjected } = valid
+    expect(pickSandboxClaudeConfigEnv(onlyInjected)).toEqual({})
+    expect(
+      pickSandboxClaudeConfigEnv({ ...valid, ORCA_CLAUDE_INJECTED_CONFIG_DIR: `${root}/acct2/home` })
+    ).toEqual({})
+  })
+
+  it('drops both for paths outside the root, equal to it, relative, or with ..', () => {
+    const forge = (dir: string) => ({
+      ...valid,
+      CLAUDE_CONFIG_DIR: dir,
+      ORCA_CLAUDE_INJECTED_CONFIG_DIR: dir
+    })
+    expect(pickSandboxClaudeConfigEnv(forge('/home/mihail/.claude'))).toEqual({})
+    expect(pickSandboxClaudeConfigEnv(forge(root))).toEqual({})
+    expect(pickSandboxClaudeConfigEnv(forge(`${root}-evil/acct/home`))).toEqual({})
+    expect(pickSandboxClaudeConfigEnv(forge('claude-profiles/acct1/home'))).toEqual({})
+    expect(pickSandboxClaudeConfigEnv(forge(`${root}/../.claude`))).toEqual({})
+    expect(pickSandboxClaudeConfigEnv(forge(`${root}/acct1/../../../.claude`))).toEqual({})
+  })
+
+  it('detects an Orca-injected dir only when the pair is set and equal', () => {
+    expect(hasInjectedClaudeConfigDir(valid)).toBe(true)
+    expect(hasInjectedClaudeConfigDir({ CLAUDE_CONFIG_DIR: home })).toBe(false)
+    expect(hasInjectedClaudeConfigDir({ ORCA_CLAUDE_INJECTED_CONFIG_DIR: home })).toBe(false)
+    expect(hasInjectedClaudeConfigDir(undefined)).toBe(false)
+    expect(
+      hasInjectedClaudeConfigDir({ CLAUDE_CONFIG_DIR: home, ORCA_CLAUDE_INJECTED_CONFIG_DIR: '/x' })
+    ).toBe(false)
   })
 })

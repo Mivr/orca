@@ -15,6 +15,7 @@
 import {
   SANDBOX_CONTAINER_ENV,
   SANDBOX_LAUNCH_STAGING_ENV,
+  pickSandboxClaudeConfigEnv,
   pickSandboxEnv,
   pickSandboxHookSpawnEnv,
   sandboxInnerShell
@@ -39,7 +40,12 @@ export function buildSandboxExecRewrite(args: {
   // hook plane is per-spawn routing (pane keys differ per pane in one
   // container). Without these the in-sandbox hooks see no ORCA_PANE_KEY and
   // even the spool fallback stays silent (`[ -n ... ] || return 0`).
-  const execEnv = { ...pickSandboxEnv(args.env), ...pickSandboxHookSpawnEnv(args.env) }
+  const execEnv = {
+    ...pickSandboxEnv(args.env),
+    ...pickSandboxHookSpawnEnv(args.env),
+    // Account routing: only an Orca-injected dir inside the stamped profiles root.
+    ...pickSandboxClaudeConfigEnv(args.env)
+  }
   const envFlags: string[] = []
   for (const [key, value] of Object.entries(execEnv)) {
     envFlags.push('-e', `${key}=${value}`)

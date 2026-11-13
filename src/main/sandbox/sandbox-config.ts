@@ -7,6 +7,8 @@
  * daemon-side spawn rewrite can share it without pulling in a process runner.
  */
 
+import { CLAUDE_INJECTED_CONFIG_DIR_ENV } from '../../shared/claude-profile-routing'
+
 /** Max concurrent sandboxed agents. Admission rejects past this — never queues. */
 export const MAX_SANDBOX_SLOTS = 10
 export const SANDBOX_MAX_SLOTS_ENV = 'ORCA_SANDBOX_MAX_SLOTS'
@@ -103,6 +105,10 @@ export const SANDBOX_CPUS = '2.0'
 export const SANDBOX_CONTAINER_ENV = 'ORCA_SANDBOX_NAME'
 export const SANDBOX_WORKTREE_ENV = 'ORCA_SANDBOX_WORKTREE'
 export const SANDBOX_LAUNCH_STAGING_ENV = 'ORCA_SANDBOX_LAUNCH_STAGING_DIR'
+/** Orcad stamps the `claude-profiles` mount root when the container carries that capability. */
+export const SANDBOX_CLAUDE_PROFILES_DIR_ENV = 'ORCA_SANDBOX_CLAUDE_PROFILES_DIR'
+/** Docker label recording the absolute `claude-profiles` root a container was created with. */
+export const SANDBOX_CLAUDE_PROFILES_LABEL = 'orca.sandbox.claude-profiles'
 
 /** Container HOME stamped at create (`-e HOME=...` in the manager). */
 export const SANDBOX_HOME = '/var/tmp'
@@ -241,6 +247,45 @@ export function pickSandboxHookSpawnEnv(env: Record<string, string>): Record<str
   return picked
 }
 
+const CLAUDE_CONFIG_DIR_ENV = 'CLAUDE_CONFIG_DIR'
+
+/** True when `value` is an absolute path strictly inside `root` (no `..` segments). */
+function isStrictlyInsideRoot(value: string, root: string): boolean {
+  if (!value.startsWith('/') || !root.startsWith('/')) {
+    return false
+  }
+  if (value.split('/').includes('..') || root.split('/').includes('..')) {
+    return false
+  }
+  const prefix = root.endsWith('/') ? root : `${root}/`
+  return value.length > prefix.length && value.startsWith(prefix)
+}
+
+/**
+ * Claude account routing across the sandbox boundary. Forwards the managed
+ * config dir only when orcad stamped the profiles root (container carries the
+ * same-path mount), both vars are set and equal (so the value is one Orca
+ * injected, never orcad's own CLAUDE_CONFIG_DIR), and the dir lies strictly
+ * inside that root. Otherwise forwards nothing and claude uses the default
+ * login at the container HOME. Kept out of SANDBOX_HOOK_SPAWN_ENV_KEYS on
+ * purpose: those pass through unconditionally.
+ */
+export function pickSandboxClaudeConfigEnv(env: Record<string, string>): Record<string, string> {
+  const root = env[SANDBOX_CLAUDE_PROFILES_DIR_ENV]
+  const configDir = env[CLAUDE_CONFIG_DIR_ENV]
+  const injected = env[CLAUDE_INJECTED_CONFIG_DIR_ENV]
+  if (!root || !configDir || configDir !== injected || !isStrictlyInsideRoot(configDir, root)) {
+    return {}
+  }
+  return { [CLAUDE_CONFIG_DIR_ENV]: configDir, [CLAUDE_INJECTED_CONFIG_DIR_ENV]: configDir }
+}
+
+/** True when the spawn env carries an Orca-injected Claude config dir (equal pair). */
+export function hasInjectedClaudeConfigDir(env: Record<string, string> | undefined): boolean {
+  const configDir = env?.[CLAUDE_CONFIG_DIR_ENV]
+  return Boolean(configDir) && configDir === env?.[CLAUDE_INJECTED_CONFIG_DIR_ENV]
+}
+
 /**
  * Git-auth + agent-CLI login allowlist for the sandbox (auth-mounts pattern).
  * `ssh`/`gh`/`git-hooks`/`gitcookies` = static identity, always `:ro`
@@ -282,7 +327,12 @@ export const SANDBOX_AUTH_MOUNT_KEYS = [
   'codex-runtime-home',
   'opencode-overlays',
   'opencode-shared',
-  'launch-staging'
+  'launch-staging',
+  // Claude account routing: the managed profiles root (same-path, so accounts
+  // added later resolve) plus the default home at its host-absolute path (the
+  // profile homes' symlinks into ~/.claude are absolute).
+  'claude-profiles',
+  'claude-home-abs'
 ] as const
 export type SandboxAuthMountKey = (typeof SANDBOX_AUTH_MOUNT_KEYS)[number]
 

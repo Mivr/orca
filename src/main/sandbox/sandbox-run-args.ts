@@ -4,6 +4,7 @@ import {
   sandboxBrowserGpuArgs
 } from '../browser/agent-browser-gpu-flags'
 import {
+  SANDBOX_CLAUDE_PROFILES_LABEL,
   SANDBOX_CPUS,
   SANDBOX_HOME,
   SANDBOX_IMAGE,
@@ -22,6 +23,8 @@ export function buildSandboxDockerRunArgs(input: {
   mounts: readonly string[]
   authMounts: readonly string[]
   envFile: string | null
+  /** Absolute `claude-profiles` mount root; present only when that mount is included. */
+  claudeProfilesDir?: string
 }): string[] {
   // Why stamped, not baked: hosts without DRI opt out via
   // ORCA_SANDBOX_BROWSER_GPU_ARGS='' and every agent-browser launch inside
@@ -53,6 +56,9 @@ export function buildSandboxDockerRunArgs(input: {
     `${SANDBOX_MANAGED_LABEL}=1`,
     '--label',
     `${SANDBOX_WORKTREE_LABEL}=${input.worktreeId}`,
+    ...(input.claudeProfilesDir
+      ? ['--label', `${SANDBOX_CLAUDE_PROFILES_LABEL}=${input.claudeProfilesDir}`]
+      : []),
     ...input.mounts.flatMap((mount) => ['-v', mount]),
     ...input.authMounts.flatMap((mount) => ['-v', mount]),
     '-w',

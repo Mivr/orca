@@ -43,6 +43,11 @@ export function readClaudeProfileObject(file: string): ClaudeProfileRead<Record<
   }
 }
 
+/** Root holding every managed Claude account's `<id>/home`; accounts added later land under it. */
+export function claudeProfilesRoot(dataRoot: string): string {
+  return join(dataRoot, 'claude-profiles')
+}
+
 /** Use execution-host paths; pass the same normalized home at login and launch for Keychain identity. */
 export function describeClaudeProfile(
   dataRoot: string,

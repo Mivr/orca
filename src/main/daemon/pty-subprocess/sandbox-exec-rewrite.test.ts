@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { buildSandboxExecRewrite, rewritePtySpawnForSandbox } from './sandbox-exec-rewrite'
-import { SANDBOX_CONTAINER_ENV, SANDBOX_LAUNCH_STAGING_ENV } from '../../sandbox/sandbox-config'
+import {
+  SANDBOX_CLAUDE_PROFILES_DIR_ENV,
+  SANDBOX_CONTAINER_ENV,
+  SANDBOX_LAUNCH_STAGING_ENV
+} from '../../sandbox/sandbox-config'
 
 describe('sandbox-exec-rewrite', () => {
   it('rewrites the shell into docker exec with the same-path cwd', () => {
@@ -117,5 +121,63 @@ describe('sandbox-exec-rewrite', () => {
     expect(rewrite.stagingShellPath).toBe('bash')
     expect(rewrite.stagingDirectory).toBe('/home/mihail/.orca-orcad-data/launch-staging')
     expect(rewrite.shellArgs.join(' ')).not.toContain(SANDBOX_LAUNCH_STAGING_ENV)
+  })
+
+  describe('claude account routing', () => {
+    const root = '/home/mihail/.orca-orcad-data/claude-profiles'
+    const home = `${root}/acct1/home`
+    const rewriteWith = (env: Record<string, string>): string[] =>
+      buildSandboxExecRewrite({
+        containerName: 'orca-sandbox-abc',
+        hostShellPath: '/bin/bash',
+        hostShellArgs: ['-l'],
+        cwd: '/wt',
+        env: { [SANDBOX_CONTAINER_ENV]: 'orca-sandbox-abc', ...env }
+      }).shellArgs
+
+    it('forwards the injected config dir pair when stamped and inside the root', () => {
+      const args = rewriteWith({
+        [SANDBOX_CLAUDE_PROFILES_DIR_ENV]: root,
+        CLAUDE_CONFIG_DIR: home,
+        ORCA_CLAUDE_INJECTED_CONFIG_DIR: home
+      })
+      expect(args).toEqual(
+        expect.arrayContaining([
+          '-e',
+          `CLAUDE_CONFIG_DIR=${home}`,
+          '-e',
+          `ORCA_CLAUDE_INJECTED_CONFIG_DIR=${home}`
+        ])
+      )
+      expect(args.join(' ')).not.toContain(SANDBOX_CLAUDE_PROFILES_DIR_ENV)
+    })
+
+    it('forwards neither without the stamp, with differing vars, or outside the root', () => {
+      const pair = { CLAUDE_CONFIG_DIR: home, ORCA_CLAUDE_INJECTED_CONFIG_DIR: home }
+      const cases: Record<string, string>[] = [
+        pair,
+        { [SANDBOX_CLAUDE_PROFILES_DIR_ENV]: root, CLAUDE_CONFIG_DIR: home },
+        {
+          [SANDBOX_CLAUDE_PROFILES_DIR_ENV]: root,
+          CLAUDE_CONFIG_DIR: home,
+          ORCA_CLAUDE_INJECTED_CONFIG_DIR: `${root}/acct2/home`
+        },
+        {
+          [SANDBOX_CLAUDE_PROFILES_DIR_ENV]: root,
+          CLAUDE_CONFIG_DIR: '/home/mihail/.claude',
+          ORCA_CLAUDE_INJECTED_CONFIG_DIR: '/home/mihail/.claude'
+        },
+        {
+          [SANDBOX_CLAUDE_PROFILES_DIR_ENV]: root,
+          CLAUDE_CONFIG_DIR: `${root}/../x`,
+          ORCA_CLAUDE_INJECTED_CONFIG_DIR: `${root}/../x`
+        }
+      ]
+      for (const env of cases) {
+        const joined = rewriteWith(env).join(' ')
+        expect(joined).not.toContain('CLAUDE_CONFIG_DIR')
+        expect(joined).not.toContain('ORCA_CLAUDE_INJECTED_CONFIG_DIR')
+      }
+    })
   })
 })

@@ -9,6 +9,7 @@
  */
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { claudeProfilesRoot } from '../claude-accounts/claude-profile-paths'
 import { getOrcaManagedCodexHomePath } from '../codex/configuration/homes/codex-home-paths'
 import { resolveUserDataPath } from '../orcad/orcad-app-paths'
 import { SANDBOX_AUTH_MOUNT_KEYS, SANDBOX_HOME, type SandboxAuthMountKey } from './sandbox-config'
@@ -43,6 +44,10 @@ export type SandboxHookMountDirs = {
   opencodeSharedDir: string
   /** Shared launch-staging dir under userData (`0700`, same-path `:rw`). */
   launchStagingDir?: string
+  /** Managed Claude profiles root under userData (`0700`, same-path `:rw`). */
+  claudeProfilesDir?: string
+  /** Host default Claude home, mounted again at its host-absolute path. */
+  claudeHomeDir?: string
 }
 
 /** Every hook-mount key, so an invariant test can pin the full set. */
@@ -57,7 +62,9 @@ export const SANDBOX_HOOK_MOUNT_KEYS: readonly SandboxAuthMountKey[] =
       key === 'codex-runtime-home' ||
       key === 'opencode-overlays' ||
       key === 'opencode-shared' ||
-      key === 'launch-staging'
+      key === 'launch-staging' ||
+      key === 'claude-profiles' ||
+      key === 'claude-home-abs'
   )
 
 /**
@@ -73,6 +80,13 @@ export function resolveSandboxLaunchStagingDir(
   return join(userDataPath, 'launch-staging')
 }
 
+/** Same root the Claude account router uses (`<userData>/claude-profiles`). */
+export function resolveSandboxClaudeProfilesDir(
+  userDataPath: string = resolveUserDataPath()
+): string {
+  return claudeProfilesRoot(userDataPath)
+}
+
 export function resolveSandboxHookMountDirs(
   orcadHome: string = process.env.HOME ?? '/home/mihail',
   userDataPath: string = resolveUserDataPath(),
@@ -86,12 +100,16 @@ export function resolveSandboxHookMountDirs(
   const opencodeSharedDir = join(userDataPath, 'opencode-hooks', 'shared')
   const opencodeSharedPluginsDir = join(opencodeSharedDir, 'plugins')
   const launchStagingDir = resolveSandboxLaunchStagingDir(userDataPath)
+  // Mount the root, not one account home, so accounts added after container
+  // create still resolve; it must exist at create time for the existence gate.
+  const claudeProfilesDir = resolveSandboxClaudeProfilesDir(userDataPath)
   for (const dir of [
     spoolDir,
     opencodeOverlaysDir,
     opencodeSharedDir,
     opencodeSharedPluginsDir,
-    launchStagingDir
+    launchStagingDir,
+    claudeProfilesDir
   ]) {
     try {
       mkdirSync(dir, { recursive: true, mode: 0o700 })
@@ -107,7 +125,9 @@ export function resolveSandboxHookMountDirs(
     codexRuntimeHome,
     opencodeOverlaysDir,
     opencodeSharedDir,
-    launchStagingDir
+    launchStagingDir,
+    claudeProfilesDir,
+    claudeHomeDir: join(orcadHome, '.claude')
   }
 }
 
@@ -203,6 +223,34 @@ export function sandboxHookMountSpecs(hookDirs: SandboxHookMountDirs): SandboxHo
             key: 'launch-staging' as const,
             hostPath: hookDirs.launchStagingDir,
             containerPath: hookDirs.launchStagingDir,
+            kind: 'dir' as const,
+            mode: 'rw' as const
+          }
+        ]
+      : []),
+    // Claude managed-account profiles root: `:rw` (claude refreshes tokens and
+    // writes session state under CLAUDE_CONFIG_DIR). Same-path so the injected
+    // CLAUDE_CONFIG_DIR resolves verbatim.
+    ...(hookDirs.claudeProfilesDir
+      ? [
+          {
+            key: 'claude-profiles' as const,
+            hostPath: hookDirs.claudeProfilesDir,
+            containerPath: hookDirs.claudeProfilesDir,
+            kind: 'dir' as const,
+            mode: 'rw' as const
+          }
+        ]
+      : []),
+    // Default Claude home at its host-absolute path: profile homes symlink
+    // projects/skills/plugins/history into `<orcadHome>/.claude/*` absolutely.
+    // `:rw` like the /var/tmp/.claude login mount (same host dir).
+    ...(hookDirs.claudeHomeDir
+      ? [
+          {
+            key: 'claude-home-abs' as const,
+            hostPath: hookDirs.claudeHomeDir,
+            containerPath: hookDirs.claudeHomeDir,
             kind: 'dir' as const,
             mode: 'rw' as const
           }

@@ -11,18 +11,22 @@ import {
   removeSandboxForWorktree,
   resetSandboxManagerForTest,
   setSandboxDockerRunner,
-  SandboxSlotsFullError
+  SandboxSlotsFullError,
+  stampSandboxSpawnEnv
 } from './sandbox-manager'
 
 type RecordedCall = { program: string; args: readonly string[] }
 
 let calls: RecordedCall[]
 let containers: Map<string, string>
+/** Container name → value of the orca.sandbox.claude-profiles label (absent = unlabelled). */
+let claudeLabels: Map<string, string>
 let dir: string
 
 function installFakeDocker(): void {
   calls = []
   containers = new Map()
+  claudeLabels = new Map()
   setSandboxDockerRunner(async ({ program, args }) => {
     calls.push({ program, args })
     if (args[0] === 'ps') {
@@ -43,10 +47,23 @@ function installFakeDocker(): void {
       const name = nameIndex !== -1 ? String(args[nameIndex + 1]) : ''
       const worktreeId = label ? String(label).split('=').slice(1).join('=') : ''
       containers.set(name, worktreeId)
+      const claudeLabel = args.find(
+        (arg) => typeof arg === 'string' && arg.startsWith('orca.sandbox.claude-profiles=')
+      )
+      if (claudeLabel) {
+        claudeLabels.set(name, String(claudeLabel).split('=').slice(1).join('='))
+      }
       return { code: 0, stdout: `${name}\n`, stderr: '' }
+    }
+    if (args[0] === 'inspect') {
+      const name = String(args.at(-1))
+      return containers.has(name)
+        ? { code: 0, stdout: `${claudeLabels.get(name) ?? ''}\n`, stderr: '' }
+        : { code: 1, stdout: '', stderr: 'No such object' }
     }
     if (args[0] === 'rm') {
       containers.delete(String(args.at(-1)))
+      claudeLabels.delete(String(args.at(-1)))
       return { code: 0, stdout: '', stderr: '' }
     }
     return { code: 0, stdout: '', stderr: '' }
@@ -382,5 +399,135 @@ describe('reapOrphanSandboxes', () => {
     delete process.env.ORCA_SANDBOX_AGENTS
     expect(await reapOrphanSandboxes(new Set())).toEqual([])
     expect(calls).toHaveLength(0)
+  })
+})
+
+describe('claude account routing capability', () => {
+  const inspectCalls = (): RecordedCall[] => calls.filter((call) => call.args[0] === 'inspect')
+  const profilesRoot = (): string => join(dir, 'userdata', 'claude-profiles')
+  const claudeEnv = (): Record<string, string> => ({
+    CLAUDE_CONFIG_DIR: join(profilesRoot(), 'acct1', 'home'),
+    ORCA_CLAUDE_INJECTED_CONFIG_DIR: join(profilesRoot(), 'acct1', 'home')
+  })
+
+  async function makeWorktree(id: string): Promise<string> {
+    const { mkdirSync } = await import('node:fs')
+    const path = join(dir, id.replace('repo::/', ''))
+    mkdirSync(path, { recursive: true })
+    return path
+  }
+
+  it('mounts the profiles root same-path and labels the container with it', async () => {
+    const fakeHome = join(dir, 'fakehome-claude')
+    const { mkdirSync } = await import('node:fs')
+    mkdirSync(join(fakeHome, '.claude'), { recursive: true })
+    vi.stubEnv('HOME', fakeHome)
+    const worktreePath = await makeWorktree('repo::/wt-claude')
+    await ensureSandboxForWorktree({ worktreeId: 'repo::/wt-claude', worktreePath })
+    const args = calls.find((call) => call.args[0] === 'run')?.args ?? []
+    expect(args).toContain(`${profilesRoot()}:${profilesRoot()}:rw`)
+    expect(args).toContain(`${fakeHome}/.claude:${fakeHome}/.claude:rw`)
+    expect(args).toContain(`${fakeHome}/.claude:/var/tmp/.claude:rw`)
+    expect(args).toContain(`orca.sandbox.claude-profiles=${profilesRoot()}`)
+  })
+
+  it('omits the label when the mount is opted out', async () => {
+    vi.stubEnv('ORCA_SANDBOX_AUTH_MOUNTS', 'ssh,claude')
+    const worktreePath = await makeWorktree('repo::/wt-claude-optout')
+    await ensureSandboxForWorktree({ worktreeId: 'repo::/wt-claude-optout', worktreePath })
+    const args = calls.find((call) => call.args[0] === 'run')?.args ?? []
+    expect(args.some((arg) => String(arg).startsWith('orca.sandbox.claude-profiles='))).toBe(false)
+  })
+
+  it('stamps the profiles root for a new labelled container without inspecting', async () => {
+    const worktreePath = await makeWorktree('repo::/wt-stamp-new')
+    const stamp = await stampSandboxSpawnEnv({ worktreeId: 'repo::/wt-stamp-new', worktreePath })
+    expect(stamp.ORCA_SANDBOX_NAME).toBe(sandboxContainerName('repo::/wt-stamp-new'))
+    expect(stamp.ORCA_SANDBOX_CLAUDE_PROFILES_DIR).toBe(profilesRoot())
+    expect(inspectCalls()).toHaveLength(0)
+  })
+
+  it('reads the label of a reused container once and caches the answer', async () => {
+    const worktreePath = await makeWorktree('repo::/wt-stamp-reuse')
+    await ensureSandboxForWorktree({ worktreeId: 'repo::/wt-stamp-reuse', worktreePath })
+    // Fresh orcad view: container survives, in-memory knowledge does not.
+    resetSandboxManagerForTest()
+    const first = await stampSandboxSpawnEnv({ worktreeId: 'repo::/wt-stamp-reuse', worktreePath })
+    const second = await stampSandboxSpawnEnv({ worktreeId: 'repo::/wt-stamp-reuse', worktreePath })
+    expect(first.ORCA_SANDBOX_CLAUDE_PROFILES_DIR).toBe(profilesRoot())
+    expect(second.ORCA_SANDBOX_CLAUDE_PROFILES_DIR).toBe(profilesRoot())
+    expect(inspectCalls()).toHaveLength(1)
+    expect(calls.filter((call) => call.args[0] === 'run')).toHaveLength(1)
+  })
+
+  it('withholds the stamp for a reused container without the label', async () => {
+    const worktreePath = await makeWorktree('repo::/wt-stamp-old')
+    const name = sandboxContainerName('repo::/wt-stamp-old')
+    containers.set(name, 'repo::/wt-stamp-old')
+    const stamp = await stampSandboxSpawnEnv({ worktreeId: 'repo::/wt-stamp-old', worktreePath })
+    expect(stamp.ORCA_SANDBOX_NAME).toBe(name)
+    expect('ORCA_SANDBOX_CLAUDE_PROFILES_DIR' in stamp).toBe(false)
+    expect(calls.filter((call) => call.args[0] === 'run')).toHaveLength(0)
+    await stampSandboxSpawnEnv({ worktreeId: 'repo::/wt-stamp-old', worktreePath })
+    expect(inspectCalls()).toHaveLength(1)
+  })
+
+  it('withholds the stamp when the label names a different root', async () => {
+    const worktreePath = await makeWorktree('repo::/wt-stamp-moved')
+    const name = sandboxContainerName('repo::/wt-stamp-moved')
+    containers.set(name, 'repo::/wt-stamp-moved')
+    claudeLabels.set(name, '/somewhere/else/claude-profiles')
+    const stamp = await stampSandboxSpawnEnv({ worktreeId: 'repo::/wt-stamp-moved', worktreePath })
+    expect('ORCA_SANDBOX_CLAUDE_PROFILES_DIR' in stamp).toBe(false)
+  })
+
+  it('drops the cached label when the container is removed', async () => {
+    const worktreePath = await makeWorktree('repo::/wt-stamp-rm')
+    const name = sandboxContainerName('repo::/wt-stamp-rm')
+    containers.set(name, 'repo::/wt-stamp-rm')
+    await stampSandboxSpawnEnv({ worktreeId: 'repo::/wt-stamp-rm', worktreePath })
+    expect(inspectCalls()).toHaveLength(1)
+    await removeSandboxForWorktree('repo::/wt-stamp-rm')
+    containers.set(name, 'repo::/wt-stamp-rm')
+    claudeLabels.set(name, profilesRoot())
+    const stamp = await stampSandboxSpawnEnv({ worktreeId: 'repo::/wt-stamp-rm', worktreePath })
+    expect(inspectCalls()).toHaveLength(2)
+    expect(stamp.ORCA_SANDBOX_CLAUDE_PROFILES_DIR).toBe(profilesRoot())
+  })
+
+  it('warns once per container when an injected config dir meets a pre-routing sandbox', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const worktreePath = await makeWorktree('repo::/wt-warn')
+      containers.set(sandboxContainerName('repo::/wt-warn'), 'repo::/wt-warn')
+      const env = claudeEnv()
+      await stampSandboxSpawnEnv({ worktreeId: 'repo::/wt-warn', worktreePath, env })
+      await stampSandboxSpawnEnv({ worktreeId: 'repo::/wt-warn', worktreePath, env })
+      expect(warn).toHaveBeenCalledTimes(1)
+      const message = String(warn.mock.calls[0]?.[0])
+      expect(message).toContain(sandboxContainerName('repo::/wt-warn'))
+      expect(message).toContain('system default')
+      expect(message).not.toContain('acct1')
+      // No injected dir (system default selected): nothing to warn about.
+      await stampSandboxSpawnEnv({ worktreeId: 'repo::/wt-warn', worktreePath, env: {} })
+      expect(warn).toHaveBeenCalledTimes(1)
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('does not warn for a routable container', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const worktreePath = await makeWorktree('repo::/wt-nowarn')
+      await stampSandboxSpawnEnv({
+        worktreeId: 'repo::/wt-nowarn',
+        worktreePath,
+        env: claudeEnv()
+      })
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
   })
 })
