@@ -55,7 +55,7 @@ function installFakeDocker(): void {
       }
       return { code: 0, stdout: `${name}\n`, stderr: '' }
     }
-    if (args[0] === 'inspect') {
+    if (args[0] === 'inspect' && args.some((arg) => arg.includes('orca.sandbox.claude-profiles'))) {
       const name = String(args.at(-1))
       return containers.has(name)
         ? { code: 0, stdout: `${claudeLabels.get(name) ?? ''}\n`, stderr: '' }
@@ -403,7 +403,13 @@ describe('reapOrphanSandboxes', () => {
 })
 
 describe('claude account routing capability', () => {
-  const inspectCalls = (): RecordedCall[] => calls.filter((call) => call.args[0] === 'inspect')
+  // Other inspects exist (bind-mount self-inspect); count only the label reads.
+  const inspectCalls = (): RecordedCall[] =>
+    calls.filter(
+      (call) =>
+        call.args[0] === 'inspect' &&
+        call.args.some((arg) => arg.includes('orca.sandbox.claude-profiles'))
+    )
   const profilesRoot = (): string => join(dir, 'userdata', 'claude-profiles')
   const claudeEnv = (): Record<string, string> => ({
     CLAUDE_CONFIG_DIR: join(profilesRoot(), 'acct1', 'home'),
