@@ -8,13 +8,7 @@
  */
 import { runProcess } from '@orca/process-host'
 import { cleanupSandboxEnvFile, writeSandboxEnvFile } from './sandbox-env-file'
-import {
-  claudeRoutingStamp,
-  forgetClaudeRoutingState,
-  mountedClaudeProfilesDir,
-  noteCreatedClaudeProfilesLabel,
-  resetClaudeRoutingStateForTest
-} from './sandbox-claude-routing'
+import * as claudeRouting from './sandbox-claude-routing'
 import { resolveSandboxHookMountDirs, resolveSandboxLaunchStagingDir } from './sandbox-hook-mounts'
 import { buildSandboxDockerRunArgs } from './sandbox-run-args'
 import {
@@ -103,7 +97,7 @@ export function resetSandboxManagerForTest(): void {
   lastRejectionAtByWorktree.clear()
   listedAtMs = 0
   listedNames = []
-  resetClaudeRoutingStateForTest()
+  claudeRouting.resetClaudeRoutingStateForTest()
   resetBindMountsForTest()
   resetSandboxSlotsForTest()
 }
@@ -202,7 +196,7 @@ async function ensureSandboxLocked(
   const envFile = writeSandboxEnvFile(args.env)
   // Capability label only when the final resolved list really mounts the root
   // (opt-out via ORCA_SANDBOX_AUTH_MOUNTS or a missing dir leaves it off).
-  const claudeProfilesDir = mountedClaudeProfilesDir(authMounts)
+  const claudeProfilesDir = claudeRouting.mountedClaudeProfilesDir(authMounts)
   const runArgs = buildSandboxDockerRunArgs({
     name,
     worktreeId: args.worktreeId,
@@ -222,7 +216,7 @@ async function ensureSandboxLocked(
       cleanupSandboxEnvFile(envFile)
     }
   }
-  noteCreatedClaudeProfilesLabel(name, claudeProfilesDir)
+  claudeRouting.noteCreatedClaudeProfilesLabel(name, claudeProfilesDir)
   liveSandboxByWorktree.set(args.worktreeId, name)
   refreshListedNames([...names, name])
   markAutomationReservationMaterialized(reservation)
@@ -238,7 +232,7 @@ export async function removeSandboxForWorktree(worktreeId: string): Promise<void
   liveSandboxByWorktree.delete(worktreeId)
   lastRejectionAtByWorktree.delete(worktreeId)
   await docker(['rm', '-f', name]).catch(() => {})
-  forgetClaudeRoutingState(name)
+  claudeRouting.forgetClaudeRoutingState(name)
   listedNames = listedNames.filter((listed) => listed !== name)
 }
 
@@ -321,7 +315,7 @@ export async function reapOrphanSandboxes(existingWorktreeIds: Set<string>): Pro
       continue
     }
     await docker(['rm', '-f', name]).catch(() => {})
-    forgetClaudeRoutingState(name)
+    claudeRouting.forgetClaudeRoutingState(name)
     reaped.push(name)
   }
   refreshListedNames(live)
@@ -339,7 +333,7 @@ export async function stampSandboxSpawnEnv(args: {
     worktreePath: args.worktreePath,
     ...(args.env ? { env: args.env } : {})
   })
-  const claudeStamp = await claudeRoutingStamp({ name, env: args.env, docker })
+  const claudeStamp = await claudeRouting.claudeRoutingStamp({ name, env: args.env, docker })
   return {
     [SANDBOX_CONTAINER_ENV]: name,
     [SANDBOX_WORKTREE_ENV]: args.worktreeId,
