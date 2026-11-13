@@ -233,8 +233,9 @@ describe('pickSandboxClaudeConfigEnv', () => {
       CLAUDE_CONFIG_DIR: home,
       ORCA_CLAUDE_INJECTED_CONFIG_DIR: home
     })
-    expect(pickSandboxClaudeConfigEnv({ ...valid, [SANDBOX_CLAUDE_PROFILES_DIR_ENV]: `${root}/` }))
-      .toEqual({ CLAUDE_CONFIG_DIR: home, ORCA_CLAUDE_INJECTED_CONFIG_DIR: home })
+    expect(
+      pickSandboxClaudeConfigEnv({ ...valid, [SANDBOX_CLAUDE_PROFILES_DIR_ENV]: `${root}/` })
+    ).toEqual({ CLAUDE_CONFIG_DIR: home, ORCA_CLAUDE_INJECTED_CONFIG_DIR: home })
   })
 
   it('drops both when the capability stamp is missing or empty', () => {
@@ -254,7 +255,10 @@ describe('pickSandboxClaudeConfigEnv', () => {
     const { CLAUDE_CONFIG_DIR: _config, ...onlyInjected } = valid
     expect(pickSandboxClaudeConfigEnv(onlyInjected)).toEqual({})
     expect(
-      pickSandboxClaudeConfigEnv({ ...valid, ORCA_CLAUDE_INJECTED_CONFIG_DIR: `${root}/acct2/home` })
+      pickSandboxClaudeConfigEnv({
+        ...valid,
+        ORCA_CLAUDE_INJECTED_CONFIG_DIR: `${root}/acct2/home`
+      })
     ).toEqual({})
   })
 

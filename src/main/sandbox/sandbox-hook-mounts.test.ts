@@ -85,7 +85,11 @@ describe('sandbox-hook-mounts', () => {
       mode: 'rw'
     })
     // Without the optional dirs the specs are omitted (fail closed).
-    const bare = sandboxHookMountSpecs({ ...hookDirs, claudeProfilesDir: undefined, claudeHomeDir: undefined })
+    const bare = sandboxHookMountSpecs({
+      ...hookDirs,
+      claudeProfilesDir: undefined,
+      claudeHomeDir: undefined
+    })
     expect(bare.map((spec) => spec.key)).not.toContain('claude-profiles')
     expect(bare.map((spec) => spec.key)).not.toContain('claude-home-abs')
   })
