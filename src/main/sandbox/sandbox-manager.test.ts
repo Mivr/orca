@@ -496,6 +496,8 @@ describe('claude account routing capability', () => {
     await removeSandboxForWorktree('repo::/wt-stamp-rm')
     containers.set(name, 'repo::/wt-stamp-rm')
     claudeLabels.set(name, profilesRoot())
+    // Refresh the listing cache so the re-added container reads as reused.
+    await reapOrphanSandboxes(new Set(['repo::/wt-stamp-rm']))
     const stamp = await stampSandboxSpawnEnv({ worktreeId: 'repo::/wt-stamp-rm', worktreePath })
     expect(inspectCalls()).toHaveLength(2)
     expect(stamp.ORCA_SANDBOX_CLAUDE_PROFILES_DIR).toBe(profilesRoot())
