@@ -9,10 +9,13 @@
 import { runProcess } from '@orca/process-host'
 import { cleanupSandboxEnvFile, writeSandboxEnvFile } from './sandbox-env-file'
 import {
-  resolveSandboxClaudeProfilesDir,
-  resolveSandboxHookMountDirs,
-  resolveSandboxLaunchStagingDir
-} from './sandbox-hook-mounts'
+  claudeRoutingStamp,
+  forgetClaudeRoutingState,
+  mountedClaudeProfilesDir,
+  noteCreatedClaudeProfilesLabel,
+  resetClaudeRoutingStateForTest
+} from './sandbox-claude-routing'
+import { resolveSandboxHookMountDirs, resolveSandboxLaunchStagingDir } from './sandbox-hook-mounts'
 import { buildSandboxDockerRunArgs } from './sandbox-run-args'
 import {
   resetBindMountsForTest,
@@ -21,15 +24,12 @@ import {
   type HostMount
 } from './sandbox-bind-mounts'
 import {
-  SANDBOX_CLAUDE_PROFILES_DIR_ENV,
-  SANDBOX_CLAUDE_PROFILES_LABEL,
   SANDBOX_CONTAINER_ENV,
   SANDBOX_LAUNCH_STAGING_ENV,
   SANDBOX_MANAGED_LABEL,
   SANDBOX_SLOTS_FULL,
   SANDBOX_WORKTREE_ENV,
   SANDBOX_WORKTREE_LABEL,
-  hasInjectedClaudeConfigDir,
   isSandboxRoutingEnabled,
   sandboxAutomationMaxSlots,
   sandboxContainerName,
@@ -97,22 +97,13 @@ const REJECTION_VISIBLE_MS = 5 * 60_000
 let listedAtMs = 0
 let listedNames: string[] = []
 const LIST_TTL_MS = 10_000
-/**
- * Per-container `orca.sandbox.claude-profiles` label value ('' = absent).
- * Mounts never change for a container's life, so one answer is final; entries
- * drop when the container is removed.
- */
-const claudeProfilesLabelByContainer = new Map<string, string>()
-/** Containers already warned about missing Claude account routing (one warning each). */
-const claudeRoutingWarnedContainers = new Set<string>()
 
 export function resetSandboxManagerForTest(): void {
   liveSandboxByWorktree.clear()
   lastRejectionAtByWorktree.clear()
   listedAtMs = 0
   listedNames = []
-  claudeProfilesLabelByContainer.clear()
-  claudeRoutingWarnedContainers.clear()
+  resetClaudeRoutingStateForTest()
   resetBindMountsForTest()
   resetSandboxSlotsForTest()
 }
@@ -211,10 +202,7 @@ async function ensureSandboxLocked(
   const envFile = writeSandboxEnvFile(args.env)
   // Capability label only when the final resolved list really mounts the root
   // (opt-out via ORCA_SANDBOX_AUTH_MOUNTS or a missing dir leaves it off).
-  const claudeProfilesDir = resolveSandboxClaudeProfilesDir()
-  const claudeProfilesMounted = authMounts.some((mount) =>
-    mount.endsWith(`:${claudeProfilesDir}:rw`)
-  )
+  const claudeProfilesDir = mountedClaudeProfilesDir(authMounts)
   const runArgs = buildSandboxDockerRunArgs({
     name,
     worktreeId: args.worktreeId,
@@ -222,7 +210,7 @@ async function ensureSandboxLocked(
     mounts,
     authMounts,
     envFile,
-    ...(claudeProfilesMounted ? { claudeProfilesDir } : {})
+    ...(claudeProfilesDir ? { claudeProfilesDir } : {})
   })
   try {
     const created = await docker(runArgs)
@@ -234,7 +222,7 @@ async function ensureSandboxLocked(
       cleanupSandboxEnvFile(envFile)
     }
   }
-  claudeProfilesLabelByContainer.set(name, claudeProfilesMounted ? claudeProfilesDir : '')
+  noteCreatedClaudeProfilesLabel(name, claudeProfilesDir)
   liveSandboxByWorktree.set(args.worktreeId, name)
   refreshListedNames([...names, name])
   markAutomationReservationMaterialized(reservation)
@@ -340,32 +328,6 @@ export async function reapOrphanSandboxes(existingWorktreeIds: Set<string>): Pro
   return reaped
 }
 
-function forgetClaudeRoutingState(name: string): void {
-  claudeProfilesLabelByContainer.delete(name)
-  claudeRoutingWarnedContainers.delete(name)
-}
-
-/** Label value for a container: cached, else one `docker inspect` (null = unknown, not cached). */
-async function claudeProfilesLabel(name: string): Promise<string | null> {
-  const cached = claudeProfilesLabelByContainer.get(name)
-  if (cached !== undefined) {
-    return cached
-  }
-  const result = await docker([
-    'inspect',
-    '--format',
-    `{{index .Config.Labels "${SANDBOX_CLAUDE_PROFILES_LABEL}"}}`,
-    name
-  ]).catch(() => null)
-  if (!result || result.code !== 0) {
-    return null
-  }
-  const raw = result.stdout.trim()
-  const value = raw === '<no value>' ? '' : raw
-  claudeProfilesLabelByContainer.set(name, value)
-  return value
-}
-
 /** Stamp a fresh agent spawn with its sandbox target (admitting it first). */
 export async function stampSandboxSpawnEnv(args: {
   worktreeId: string
@@ -377,21 +339,12 @@ export async function stampSandboxSpawnEnv(args: {
     worktreePath: args.worktreePath,
     ...(args.env ? { env: args.env } : {})
   })
-  const profilesRoot = resolveSandboxClaudeProfilesDir()
-  const routable = (await claudeProfilesLabel(name)) === profilesRoot
-  if (!routable && hasInjectedClaudeConfigDir(args.env) && !claudeRoutingWarnedContainers.has(name)) {
-    claudeRoutingWarnedContainers.add(name)
-    console.warn(
-      `[sandbox] ${name} predates Claude account routing (no ${SANDBOX_CLAUDE_PROFILES_LABEL} ` +
-        `label or mount); this launch uses the system default Claude login. ` +
-        `Remove the container to pick up account routing.`
-    )
-  }
+  const claudeStamp = await claudeRoutingStamp({ name, env: args.env, docker })
   return {
     [SANDBOX_CONTAINER_ENV]: name,
     [SANDBOX_WORKTREE_ENV]: args.worktreeId,
     [SANDBOX_LAUNCH_STAGING_ENV]: resolveSandboxLaunchStagingDir(),
-    ...(routable ? { [SANDBOX_CLAUDE_PROFILES_DIR_ENV]: profilesRoot } : {})
+    ...claudeStamp
   }
 }
 
